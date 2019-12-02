@@ -1,5 +1,6 @@
-use crate::State::{Error, Halted, Running};
+use itertools::Itertools;
 use std::fs;
+use std::iter::successors;
 
 struct IntcodeMachine {
     tape: Vec<usize>,
@@ -25,9 +26,9 @@ impl IntcodeMachine {
     fn run(&mut self) -> usize {
         loop {
             match self.step_through() {
-                Running => {} // continue execution
-                Halted => return self.output,
-                Error => panic!("intcode machine ended in invalid state"),
+                State::Running => {} // continue execution
+                State::Halted => return self.output,
+                State::Error => panic!("intcode machine ended in an invalid state"),
             }
             self.advance_head();
         }
@@ -42,17 +43,17 @@ impl IntcodeMachine {
         match self.tape[self.head_position] {
             1 => {
                 self.add_op();
-                Running
+                State::Running
             }
             2 => {
                 self.mul_op();
-                Running
+                State::Running
             }
             99 => {
                 self.halt_op();
-                Halted
+                State::Halted
             }
-            _ => Error,
+            _ => State::Error,
         }
     }
 
@@ -101,9 +102,39 @@ fn do_part1(input: Vec<usize>) {
     );
 }
 
+fn do_part2(input: Vec<usize>) {
+    // bruteforce possible noun, verb pairs
+    // an alternative would be to reverse engineer the machine execution
+    // or implement something like SAT solver
+    // But even puzzle authors imply you should just try to bruteforce
+
+    let part2_answer_vec: Vec<usize> = successors(Some(0usize), |x| Some(*x + 1))
+        .take(100)
+        .permutations(2)
+        .map(|noun_verb_vec| {
+            let noun = noun_verb_vec[0];
+            let verb = noun_verb_vec[1];
+            let machine_input: Vec<usize> = input
+                .iter()
+                .cloned()
+                .take(1)
+                .chain(vec![noun, verb])
+                .chain(input.iter().cloned().skip(3))
+                .collect();
+            (noun, verb, IntcodeMachine::new(machine_input).run())
+        })
+        .skip_while(|(_, _, output)| *output != 19_690_720)
+        .map(|(noun, verb, _)| 100 * noun + verb)
+        .take(1)
+        .collect();
+
+    println!("Part 2 answer: {:?}", part2_answer_vec.first().unwrap());
+}
+
 fn main() {
     let day1_input = read_input_file("day2.input");
-    do_part1(day1_input);
+    do_part1(day1_input.clone());
+    do_part2(day1_input.clone());
 }
 
 #[cfg(test)]
