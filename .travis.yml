@@ -1,0 +1,10 @@
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+
+cache: cargo
+
+script:
+  - ./run_build.sh
