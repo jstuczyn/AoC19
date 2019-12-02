@@ -1,0 +1,10 @@
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+
+cache: cargo
+
+script:
+  - for d in */; do cargo build --manifest-path="$d"Cargo.toml --verbose --all && cargo test --manifest-path="$d"Cargo.toml --verbose --all; done
