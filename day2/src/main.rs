@@ -84,18 +84,18 @@ fn read_input_file(path: &str) -> Vec<usize> {
         .collect()
 }
 
-fn part1_preparation(input: Vec<usize>) -> Vec<usize> {
-    input
+fn prepare_tape(input_tape: Vec<usize>, subs: (usize, usize)) -> Vec<usize> {
+    input_tape
         .iter()
         .cloned()
         .take(1)
-        .chain(vec![12usize, 2usize])
-        .chain(input.iter().cloned().skip(3))
+        .chain(vec![subs.0, subs.1])
+        .chain(input_tape.iter().cloned().skip(3))
         .collect()
 }
 
 fn do_part1(input: Vec<usize>) {
-    let prepared_tape = part1_preparation(input);
+    let prepared_tape = prepare_tape(input, (12, 2));
     println!(
         "Part 1 answer: {}",
         IntcodeMachine::new(prepared_tape).run()
@@ -107,20 +107,13 @@ fn do_part2(input: Vec<usize>) {
     // an alternative would be to reverse engineer the machine execution
     // or implement something like SAT solver
     // But even puzzle authors imply you should just try to bruteforce
-
     let part2_answer_vec: Vec<usize> = successors(Some(0usize), |x| Some(*x + 1))
         .take(100)
         .permutations(2)
         .map(|noun_verb_vec| {
             let noun = noun_verb_vec[0];
             let verb = noun_verb_vec[1];
-            let machine_input: Vec<usize> = input
-                .iter()
-                .cloned()
-                .take(1)
-                .chain(vec![noun, verb])
-                .chain(input.iter().cloned().skip(3))
-                .collect();
+            let machine_input = prepare_tape(input.clone(), (noun, verb));
             (noun, verb, IntcodeMachine::new(machine_input).run())
         })
         .skip_while(|(_, _, output)| *output != 19_690_720)
