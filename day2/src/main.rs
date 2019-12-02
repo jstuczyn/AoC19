@@ -1,7 +1,7 @@
-use itertools::Itertools;
 use std::fs;
-use std::iter::successors;
 
+// The below code could be made slightly nicer by introducing Tape type and defining methods on it.
+// And also by properly defining OpCodes and operations on them
 struct IntcodeMachine {
     tape: Vec<usize>,
     head_position: usize,
@@ -107,17 +107,14 @@ fn do_part2(input: Vec<usize>) {
     // an alternative would be to reverse engineer the machine execution
     // or implement something like SAT solver
     // But even puzzle authors imply you should just try to bruteforce
-    let part2_answer_vec: Vec<usize> = successors(Some(0usize), |x| Some(*x + 1))
-        .take(100)
-        .permutations(2)
-        .map(|noun_verb_vec| {
-            let noun = noun_verb_vec[0];
-            let verb = noun_verb_vec[1];
-            let machine_input = prepare_tape(input.clone(), (noun, verb));
-            (noun, verb, IntcodeMachine::new(machine_input).run())
+    let part2_answer_vec: Vec<usize> = (0..99)
+        .flat_map(|noun| (0..99).map(move |verb| (noun, verb)))
+        .map(|noun_verb_pair| {
+            let machine_input = prepare_tape(input.clone(), noun_verb_pair);
+            (noun_verb_pair, IntcodeMachine::new(machine_input).run())
         })
-        .skip_while(|(_, _, output)| *output != 19_690_720)
-        .map(|(noun, verb, _)| 100 * noun + verb)
+        .skip_while(|(_, output)| *output != 19_690_720)
+        .map(|(noun_verb_pair, _)| 100 * noun_verb_pair.0 + noun_verb_pair.1)
         .take(1)
         .collect();
 
