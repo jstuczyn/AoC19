@@ -2,6 +2,8 @@ use itertools::Itertools;
 use std::fs;
 use std::iter::successors;
 
+// The below code could be made slightly nicer by introducing Tape type and defining methods on it.
+
 struct IntcodeMachine {
     tape: Vec<usize>,
     head_position: usize,
