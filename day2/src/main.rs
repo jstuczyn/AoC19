@@ -122,9 +122,9 @@ fn do_part2(input: Vec<usize>) {
 }
 
 fn main() {
-    let day1_input = read_input_file("day2.input");
-    do_part1(day1_input.clone());
-    do_part2(day1_input.clone());
+    let day2_input = read_input_file("day2.input");
+    do_part1(day2_input.clone());
+    do_part2(day2_input.clone());
 }
 
 #[cfg(test)]
