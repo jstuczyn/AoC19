@@ -1,6 +1,8 @@
 use std::fs;
 
-#[derive(Debug, PartialEq)]
+use itertools::Itertools;
+
+#[derive(Debug, PartialEq, Clone)]
 enum PointAxisTranslation {
     Up(f64),
     Right(f64),
@@ -13,27 +15,27 @@ impl PointAxisTranslation {
         let mut chars_iter = raw.chars();
         let direction = match chars_iter.next() {
             None => return None,
-            Some(c) => c
+            Some(c) => c,
         };
 
-        let value_str: String = chars_iter.into_iter().collect();
-        let value =  value_str.parse::<f64>();
+        let value_str: String = chars_iter.collect();
+        let value = value_str.parse::<f64>();
         match value {
             Err(_) => None,
             Ok(val) => match direction {
                 'U' => Some(PointAxisTranslation::Up(val)),
                 'R' => Some(PointAxisTranslation::Right(val)),
                 'D' => Some(PointAxisTranslation::Down(val)),
-                'L' =>Some(PointAxisTranslation::Left(val)),
-                _ => None
-            }
+                'L' => Some(PointAxisTranslation::Left(val)),
+                _ => None,
+            },
         }
     }
 }
 
 // f64 is used rather than usize or even i64 so that we would not get screwed by integer division
 // when determining intersection point
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Point {
     x: f64,
     y: f64,
@@ -46,18 +48,27 @@ impl Point {
 
     fn translate_on_axis(&self, translation: PointAxisTranslation) -> Self {
         match translation {
-            PointAxisTranslation::Up(val) => Point { x: self.x, y: self.y + val },
-            PointAxisTranslation::Right(val) => Point { x: self.x + val, y: self.y },
-            PointAxisTranslation::Down(val) => Point { x: self.x, y: self.y - val },
-            PointAxisTranslation::Left(val) => Point { x: self.x - val, y: self.y }
+            PointAxisTranslation::Up(val) => Point {
+                x: self.x,
+                y: self.y + val,
+            },
+            PointAxisTranslation::Right(val) => Point {
+                x: self.x + val,
+                y: self.y,
+            },
+            PointAxisTranslation::Down(val) => Point {
+                x: self.x,
+                y: self.y - val,
+            },
+            PointAxisTranslation::Left(val) => Point {
+                x: self.x - val,
+                y: self.y,
+            },
         }
     }
 
     fn origin() -> Self {
-        Point {
-            x: 0.0,
-            y: 0.0,
-        }
+        Point { x: 0.0, y: 0.0 }
     }
 
     fn manhattan_distance_to_origin(&self) -> f64 {
@@ -73,13 +84,11 @@ struct WireSegment {
 
 impl WireSegment {
     fn new(start: Point, end: Point) -> Self {
-        WireSegment {
-            start,
-            end,
-        }
+        WireSegment { start, end }
     }
 
-    fn intersection(&self, other: Self) -> Option<Point> {
+    // TODO: for tomorrow: make sure the intersection point is actually on both lines...
+    fn intersection(&self, other: &Self) -> Option<Point> {
         let a1 = self.end.y - self.start.y;
         let b1 = self.start.x - self.end.x;
         let c1 = a1 * self.start.x + b1 * self.start.y;
@@ -94,35 +103,68 @@ impl WireSegment {
             _ => Some(Point {
                 x: (b2 * c1 - b1 * c2) / delta,
                 y: (a1 * c2 - a2 * c1) / delta,
-            })
+            }),
         }
     }
 }
 
 struct Wire {
-    segments: Vec<WireSegment>
+    segments: Vec<WireSegment>,
 }
 
 impl Wire {
     fn new_from_raw(raw_str: &str) -> Self {
-        // start + traslate -> new point
+        let origin = Point::origin();
+        let points: Vec<_> = vec![origin] // we need to start our sequence with the origin
+            .into_iter()
+            .chain(
+                raw_str
+                    .split(',')
+                    .map(|s| PointAxisTranslation::from_str(s).unwrap()) // if it panics during unwrap it means we got invalid input so there's nothing sensible we can do anyway
+                    .scan(origin, |curr_point, translation| {
+                        let new_point = curr_point.translate_on_axis(translation);
+                        *curr_point = new_point;
+                        // TODO: unnecessary copy
+                        Some(new_point)
+                    }),
+            )
+            .collect();
 
-//        raw_str.split(',').map(|s|)
-//        println!("new wire from {:?}", raw_str);
-        Self {
-            segments: vec![]
-        }
+        let segments = points
+            .into_iter()
+            .tuple_windows()
+            .map(|(p1, p2)| WireSegment::new(p1, p2))
+            .collect();
+
+        Self { segments }
     }
 
     fn print_segments(&self) {
-        self.segments.iter().map(|seg| println!("{:?}", seg));
+        let _: Vec<_> = self
+            .segments
+            .iter()
+            .inspect(|seg| println!("{:?}", seg))
+            .collect();
     }
 
-    fn closest_intersection_to_origin(&self, other: Self) -> Point {
-        Point {
-            x: 0.0,
-            y: 0.0,
-        }
+    fn all_intersections(&self, other: &Self) -> Vec<Point> {
+        self.segments
+            .iter()
+            .flat_map(|w1_seg| other.segments.iter().map(move |w2_seg| (w1_seg, w2_seg)))
+            .inspect(|(w1_seg, w2_seg)| println!("trying {:?} and {:?}", w1_seg, w2_seg))
+            .filter_map(|(w1_seg, w2_seg)| w1_seg.intersection(w2_seg))
+            .inspect(|x| println!("intersection at {:?}", x))
+            .collect()
+    }
+
+    fn closest_intersection_to_origin(&self, other: &Self) -> Point {
+        // all intersections
+        self.all_intersections(other)
+            .into_iter()
+            .map(|p| (p, p.manhattan_distance_to_origin() as u64)) // the specs kinda imply only integer values... but that's a bit of a hack here
+            .min_by(|(_, d1), (_, d2)| d1.cmp(d2))
+            .unwrap()
+            .0 // we don't care about distance itself, only the coordinates
     }
 }
 
@@ -153,30 +195,41 @@ mod tests {
         let wire1 = Wire::new_from_raw("R8,U5,L5,D3");
         let wire2 = Wire::new_from_raw("U7,R6,D4,L4");
 
+        wire1.print_segments();
+
         assert_eq!(
             6.0,
-            wire1.closest_intersection_to_origin(wire2).manhattan_distance_to_origin())
+            wire1
+                .closest_intersection_to_origin(&wire2)
+                .manhattan_distance_to_origin()
+        )
     }
 
-    #[test]
-    fn it_correctly_determines_closest_intersection_for_second_input() {
-        let wire1 = Wire::new_from_raw("R75,D30,R83,U83,L12,D49,R71,U7,L72");
-        let wire2 = Wire::new_from_raw("U62,R66,U55,R34,D71,R55,D58,R83");
-
-        assert_eq!(
-            159.0,
-            wire1.closest_intersection_to_origin(wire2).manhattan_distance_to_origin())
-    }
-
-    #[test]
-    fn it_correctly_determines_closest_intersection_for_third_input() {
-        let wire1 = Wire::new_from_raw("R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51");
-        let wire2 = Wire::new_from_raw("U98,R91,D20,R16,D67,R40,U7,R15,U6,R7");
-
-        assert_eq!(
-            135.0,
-            wire1.closest_intersection_to_origin(wire2).manhattan_distance_to_origin())
-    }
+    //    #[test]
+    //    fn it_correctly_determines_closest_intersection_for_second_input() {
+    //        let wire1 = Wire::new_from_raw("R75,D30,R83,U83,L12,D49,R71,U7,L72");
+    //        let wire2 = Wire::new_from_raw("U62,R66,U55,R34,D71,R55,D58,R83");
+    //
+    //        assert_eq!(
+    //            159.0,
+    //            wire1
+    //                .closest_intersection_to_origin(wire2)
+    //                .manhattan_distance_to_origin()
+    //        )
+    //    }
+    //
+    //    #[test]
+    //    fn it_correctly_determines_closest_intersection_for_third_input() {
+    //        let wire1 = Wire::new_from_raw("R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51");
+    //        let wire2 = Wire::new_from_raw("U98,R91,D20,R16,D67,R40,U7,R15,U6,R7");
+    //
+    //        assert_eq!(
+    //            135.0,
+    //            wire1
+    //                .closest_intersection_to_origin(wire2)
+    //                .manhattan_distance_to_origin()
+    //        )
+    //    }
 
     #[cfg(test)]
     mod line_intersection {
@@ -186,21 +239,21 @@ mod tests {
         fn it_correctly_detects_intersection() {
             let l1 = WireSegment::new(Point::new(4.0, 0.0), Point::new(6.0, 10.0));
             let l2 = WireSegment::new(Point::new(0.0, 3.0), Point::new(10.0, 7.0));
-            assert_eq!(Point::new(5.0, 5.0), l1.intersection(l2).unwrap())
+            assert_eq!(Point::new(5.0, 5.0), l1.intersection(&l2).unwrap())
         }
 
         #[test]
         fn it_correctly_detects_no_intersection() {
             let l1 = WireSegment::new(Point::new(0.0, 0.0), Point::new(1.0, 1.0));
             let l2 = WireSegment::new(Point::new(1.0, 2.0), Point::new(4.0, 5.0));
-            assert_eq!(None, l1.intersection(l2))
+            assert_eq!(None, l1.intersection(&l2))
         }
 
         #[test]
         fn it_correctly_detects_no_intersection_for_parallel_lines() {
             let l1 = WireSegment::new(Point::new(0.0, 0.0), Point::new(1.0, 1.0));
             let l2 = WireSegment::new(Point::new(0.0, 1.0), Point::new(1.0, 2.0));
-            assert_eq!(None, l1.intersection(l2))
+            assert_eq!(None, l1.intersection(&l2))
         }
     }
 
@@ -210,36 +263,44 @@ mod tests {
 
         #[test]
         fn it_returns_valid_up_translation() {
-            assert_eq!(PointAxisTranslation::Up(10.0), PointAxisTranslation::from_str("U10").unwrap());
+            assert_eq!(
+                PointAxisTranslation::Up(10.0),
+                PointAxisTranslation::from_str("U10").unwrap()
+            );
         }
 
         #[test]
         fn it_returns_valid_right_translation() {
-            assert_eq!(PointAxisTranslation::Right(10.0), PointAxisTranslation::from_str("R10").unwrap());
+            assert_eq!(
+                PointAxisTranslation::Right(10.0),
+                PointAxisTranslation::from_str("R10").unwrap()
+            );
         }
 
         #[test]
         fn it_returns_valid_down_translation() {
-            assert_eq!(PointAxisTranslation::Down(10.0), PointAxisTranslation::from_str("D10").unwrap());
+            assert_eq!(
+                PointAxisTranslation::Down(10.0),
+                PointAxisTranslation::from_str("D10").unwrap()
+            );
         }
 
         #[test]
         fn it_returns_valid_left_translation() {
-            assert_eq!(PointAxisTranslation::Left(10.0), PointAxisTranslation::from_str("L10").unwrap());
+            assert_eq!(
+                PointAxisTranslation::Left(10.0),
+                PointAxisTranslation::from_str("L10").unwrap()
+            );
         }
 
         #[test]
         fn it_returns_none_for_invalid_translations() {
-            match PointAxisTranslation::from_str("Z10") {
-                Some(t) => panic!("expected nothing!"),
-                None => ()
+            if let Some(_) = PointAxisTranslation::from_str("Z10") {
+                panic!("expected nothing!")
             }
-
-            match PointAxisTranslation::from_str("Z1Y0") {
-                Some(t) => panic!("expected nothing!"),
-                None => ()
+            if let Some(_) = PointAxisTranslation::from_str("Z1Y0") {
+                panic!("expected nothing!")
             }
         }
-
     }
 }
