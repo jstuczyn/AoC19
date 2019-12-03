@@ -1,16 +1,63 @@
 use std::fs;
 
+#[derive(Debug, PartialEq)]
+enum PointAxisTranslation {
+    Up(f64),
+    Right(f64),
+    Down(f64),
+    Left(f64),
+}
+
+impl PointAxisTranslation {
+    fn from_str(raw: &str) -> Option<Self> {
+        let mut chars_iter = raw.chars();
+        let direction = match chars_iter.next() {
+            None => return None,
+            Some(c) => c
+        };
+
+        let value_str: String = chars_iter.into_iter().collect();
+        let value =  value_str.parse::<f64>();
+        match value {
+            Err(_) => None,
+            Ok(val) => match direction {
+                'U' => Some(PointAxisTranslation::Up(val)),
+                'R' => Some(PointAxisTranslation::Right(val)),
+                'D' => Some(PointAxisTranslation::Down(val)),
+                'L' =>Some(PointAxisTranslation::Left(val)),
+                _ => None
+            }
+        }
+    }
+}
+
 // f64 is used rather than usize or even i64 so that we would not get screwed by integer division
 // when determining intersection point
 #[derive(Debug, PartialEq)]
-struct Point{
+struct Point {
     x: f64,
-    y: f64
+    y: f64,
 }
 
 impl Point {
     fn new(x: f64, y: f64) -> Self {
-        Self{x, y}
+        Point { x, y }
+    }
+
+    fn translate_on_axis(&self, translation: PointAxisTranslation) -> Self {
+        match translation {
+            PointAxisTranslation::Up(val) => Point { x: self.x, y: self.y + val },
+            PointAxisTranslation::Right(val) => Point { x: self.x + val, y: self.y },
+            PointAxisTranslation::Down(val) => Point { x: self.x, y: self.y - val },
+            PointAxisTranslation::Left(val) => Point { x: self.x - val, y: self.y }
+        }
+    }
+
+    fn origin() -> Self {
+        Point {
+            x: 0.0,
+            y: 0.0,
+        }
     }
 
     fn manhattan_distance_to_origin(&self) -> f64 {
@@ -18,36 +65,37 @@ impl Point {
     }
 }
 
+#[derive(Debug)]
 struct WireSegment {
     start: Point,
-    end: Point
+    end: Point,
 }
 
 impl WireSegment {
     fn new(start: Point, end: Point) -> Self {
-        Self {
+        WireSegment {
             start,
-            end
+            end,
         }
     }
 
     fn intersection(&self, other: Self) -> Option<Point> {
-            let a1 = self.end.y - self.start.y;
-            let b1 = self.start.x - self.end.x;
-            let c1 = a1 * self.start.x + b1 * self.start.y;
+        let a1 = self.end.y - self.start.y;
+        let b1 = self.start.x - self.end.x;
+        let c1 = a1 * self.start.x + b1 * self.start.y;
 
-            let a2 = other.end.y - other.start.y;
-            let b2 = other.start.x - other.end.x;
-            let c2 = a2 * other.start.x + b2 * other.start.y;
+        let a2 = other.end.y - other.start.y;
+        let b2 = other.start.x - other.end.x;
+        let c2 = a2 * other.start.x + b2 * other.start.y;
 
-            let delta = a1 * b2 - a2 * b1;
-            match delta {
-                0.0 => None,
-                _ => Some(Point{
-                    x: (b2 * c1 - b1 * c2) / delta,
-                    y: (a1 * c2 - a2 * c1) / delta,
-                })
-            }
+        let delta = a1 * b2 - a2 * b1;
+        match delta {
+            0.0 => None,
+            _ => Some(Point {
+                x: (b2 * c1 - b1 * c2) / delta,
+                y: (a1 * c2 - a2 * c1) / delta,
+            })
+        }
     }
 }
 
@@ -57,16 +105,23 @@ struct Wire {
 
 impl Wire {
     fn new_from_raw(raw_str: &str) -> Self {
-        println!("new wire from {:?}", raw_str);
+        // start + traslate -> new point
+
+//        raw_str.split(',').map(|s|)
+//        println!("new wire from {:?}", raw_str);
         Self {
             segments: vec![]
         }
     }
 
+    fn print_segments(&self) {
+        self.segments.iter().map(|seg| println!("{:?}", seg));
+    }
+
     fn closest_intersection_to_origin(&self, other: Self) -> Point {
-        Point{
+        Point {
             x: 0.0,
-            y: 0.0
+            y: 0.0,
         }
     }
 }
@@ -147,5 +202,44 @@ mod tests {
             let l2 = WireSegment::new(Point::new(0.0, 1.0), Point::new(1.0, 2.0));
             assert_eq!(None, l1.intersection(l2))
         }
+    }
+
+    #[cfg(test)]
+    mod point_axis_translation {
+        use super::*;
+
+        #[test]
+        fn it_returns_valid_up_translation() {
+            assert_eq!(PointAxisTranslation::Up(10.0), PointAxisTranslation::from_str("U10").unwrap());
+        }
+
+        #[test]
+        fn it_returns_valid_right_translation() {
+            assert_eq!(PointAxisTranslation::Right(10.0), PointAxisTranslation::from_str("R10").unwrap());
+        }
+
+        #[test]
+        fn it_returns_valid_down_translation() {
+            assert_eq!(PointAxisTranslation::Down(10.0), PointAxisTranslation::from_str("D10").unwrap());
+        }
+
+        #[test]
+        fn it_returns_valid_left_translation() {
+            assert_eq!(PointAxisTranslation::Left(10.0), PointAxisTranslation::from_str("L10").unwrap());
+        }
+
+        #[test]
+        fn it_returns_none_for_invalid_translations() {
+            match PointAxisTranslation::from_str("Z10") {
+                Some(t) => panic!("expected nothing!"),
+                None => ()
+            }
+
+            match PointAxisTranslation::from_str("Z1Y0") {
+                Some(t) => panic!("expected nothing!"),
+                None => ()
+            }
+        }
+
     }
 }
