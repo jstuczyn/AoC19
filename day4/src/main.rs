@@ -2,6 +2,9 @@ use itertools::Itertools;
 
 const DAY4_INPUT: &str = "402328-864247";
 
+// this solution is again, not the most optimal, but that's not the point
+// the aim of those exercises is to improve my Rust understanding and playing with iterators.
+
 #[derive(Debug)]
 struct PasswordRange {
     min: usize,
@@ -47,12 +50,11 @@ impl Password {
         digits
     }
 
-    // is 3 digit -> 100 to 999 (10^2) to 10^3 - 1
-
     fn is_n_digit_long(&self, n: u32) -> bool {
         self.val >= 10usize.pow(n - 1) && self.val <= (10usize.pow(n) - 1)
     }
 
+    #[allow(dead_code)]
     fn is_within_range(&self, range: &PasswordRange) -> bool {
         self.val >= range.min && self.val <= range.max
     }
@@ -63,6 +65,23 @@ impl Password {
             .tuple_windows()
             .map(|(d1, d2)| d1 == d2)
             .any(|p| p)
+    }
+
+    fn has_strict_adjacent_pair(&self) -> bool {
+        self.val_digits
+            .iter()
+            .map(|d| (d, 1)) // map each digit to an initial count of 1 ...
+            .coalesce(|(d1, n), (d2, m)| {
+                // ... then merge counts for identical chars
+                if d1 == d2 {
+                    Ok((d1, n + m))
+                } else {
+                    Err(((d1, n), (d2, m)))
+                }
+            })
+            .map(|(_, count)| count == 2) // check if there are any groups of size 2
+            // that was ambiguous. Initially I was looking for group of even length because that's what I understood from the question
+            .any(|x| x)
     }
 
     fn is_not_decreasing(&self) -> bool {
@@ -78,36 +97,72 @@ impl Password {
 struct PasswordCombinations {}
 
 impl PasswordCombinations {
-    fn determine(range: &PasswordRange) -> usize {
+    fn part1_determine(range: &PasswordRange) -> usize {
         (range.min..=range.max) // this satisfies is_within_range
-            .map(|val| Password::new(val))
+            .map(Password::new)
             .filter(|pass| pass.is_n_digit_long(6))
             .filter(|pass| pass.has_same_adjacent_pair())
             .filter(|pass| pass.is_not_decreasing())
             .map(|_| 1)
             .sum()
     }
+
+    fn part2_determine(range: &PasswordRange) -> usize {
+        (range.min..=range.max) // this satisfies is_within_range
+            .map(Password::new)
+            .filter(|pass| pass.is_n_digit_long(6))
+            //            .filter(|pass| pass.has_same_adjacent_pair())
+            .filter(|pass| pass.is_not_decreasing())
+            .filter(|pass| pass.has_strict_adjacent_pair())
+            .map(|_| 1)
+            .sum()
+    }
 }
 
-// filter 6 digit
-// filter within range
-// filter at least one double
-// filter increasing
-
-fn do_part1(input: &str) {
-    let pwrange = PasswordRange::new(input);
-    let valid_pass_count = PasswordCombinations::determine(&pwrange);
+fn do_part1(pwrange: &PasswordRange) {
+    let valid_pass_count = PasswordCombinations::part1_determine(&pwrange);
     println!("Part 1 answer: {}", valid_pass_count);
+}
+
+fn do_part2(pwrange: &PasswordRange) {
+    let valid_pass_count = PasswordCombinations::part2_determine(&pwrange);
+    println!("Part 2 answer: {}", valid_pass_count);
 }
 
 fn main() {
     let input = DAY4_INPUT;
-    do_part1(input);
+    let pwrange = PasswordRange::new(input);
+    do_part1(&pwrange);
+    do_part2(&pwrange)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn detects_112233_as_valid_part2_password() {
+        let pass = Password::new(112_233);
+        assert!(pass.is_n_digit_long(6));
+        assert!(pass.is_not_decreasing());
+        assert!(pass.has_strict_adjacent_pair());
+    }
+
+    #[test]
+    fn detects_123444_as_invalid_part2_password() {
+        let pass = Password::new(123_444);
+        assert!(pass.is_n_digit_long(6));
+        assert!(pass.is_not_decreasing());
+        assert!(!pass.has_strict_adjacent_pair());
+    }
+
+    #[test]
+    fn detects_111122_as_valid_part2_password() {
+        let pass = Password::new(111_122);
+        assert!(pass.is_n_digit_long(6));
+        assert!(pass.is_not_decreasing());
+        assert!(pass.has_strict_adjacent_pair());
+    }
 
     #[cfg(test)]
     mod password_validators {
@@ -172,6 +227,21 @@ mod test {
             assert!(pass2.is_not_decreasing());
             assert!(pass3.is_not_decreasing());
             assert!(!pass4.is_not_decreasing());
+        }
+
+        #[test]
+        fn string_digit_pair_works_as_expected() {
+            let pass1 = Password::new(1222);
+            let pass2 = Password::new(12_345_678);
+            let pass3 = Password::new(123_345_678);
+            let pass4 = Password::new(123_444_567);
+            let pass5 = Password::new(111_122);
+
+            assert!(!pass1.has_strict_adjacent_pair());
+            assert!(!pass2.has_strict_adjacent_pair());
+            assert!(pass3.has_strict_adjacent_pair());
+            assert!(!pass4.has_strict_adjacent_pair());
+            assert!(pass5.has_strict_adjacent_pair());
         }
     }
 }
