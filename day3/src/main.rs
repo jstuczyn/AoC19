@@ -41,6 +41,7 @@ struct Point {
 }
 
 impl Point {
+    #[allow(dead_code)]
     fn new(x: i64, y: i64) -> Self {
         Point { x, y }
     }
@@ -157,21 +158,11 @@ impl Wire {
         Self { segments }
     }
 
-    fn print_segments(&self) {
-        let _: Vec<_> = self
-            .segments
-            .iter()
-            .inspect(|seg| println!("{:?}", seg))
-            .collect();
-    }
-
     fn all_intersections(&self, other: &Self) -> Vec<Point> {
         self.segments
             .iter()
             .flat_map(|w1_seg| other.segments.iter().map(move |w2_seg| (w1_seg, w2_seg)))
-            //            .inspect(|(w1_seg, w2_seg)| println!("trying {:?} and {:?}", w1_seg, w2_seg))
             .filter_map(|(w1_seg, w2_seg)| w1_seg.intersection(w2_seg))
-            .inspect(|x| println!("intersection at {:?}", x))
             .collect()
     }
 
@@ -182,7 +173,6 @@ impl Wire {
             .into_iter()
             .filter(|p| p != &origin) // we don't want origin itself
             .map(|p| (p, p.manhattan_distance_to_origin()))
-            .inspect(|(p, d)| println!("{:?} - {:?}", p, d))
             .min_by(|(_, d1), (_, d2)| d1.cmp(d2))
             .unwrap()
             .0
@@ -192,7 +182,10 @@ impl Wire {
 
 fn do_part1(input_wires: Vec<Wire>) {
     assert_eq!(2, input_wires.len()); // as per specs
-    println!("Part 1 answer: {}", 42);
+    let closest_intersection_dist = input_wires[0]
+        .closest_intersection_to_origin(&input_wires[1])
+        .manhattan_distance_to_origin();
+    println!("Part 1 answer: {}", closest_intersection_dist);
 }
 
 fn read_input_file(path: &str) -> Vec<Wire> {
@@ -241,18 +234,18 @@ mod tests {
         )
     }
 
-    //    #[test]
-    //    fn it_correctly_determines_closest_intersection_for_third_input() {
-    //        let wire1 = Wire::new_from_raw("R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51");
-    //        let wire2 = Wire::new_from_raw("U98,R91,D20,R16,D67,R40,U7,R15,U6,R7");
-    //
-    //        assert_eq!(
-    //            135,
-    //            wire1
-    //                .closest_intersection_to_origin(&wire2)
-    //                .manhattan_distance_to_origin()
-    //        )
-    //    }
+    #[test]
+    fn it_correctly_determines_closest_intersection_for_third_input() {
+        let wire1 = Wire::new_from_raw("R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51");
+        let wire2 = Wire::new_from_raw("U98,R91,D20,R16,D67,R40,U7,R15,U6,R7");
+
+        assert_eq!(
+            135,
+            wire1
+                .closest_intersection_to_origin(&wire2)
+                .manhattan_distance_to_origin()
+        )
+    }
 
     #[cfg(test)]
     mod segment_intersection {
