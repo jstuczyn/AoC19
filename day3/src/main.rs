@@ -75,6 +75,10 @@ impl Point {
         self.x.abs() + self.y.abs()
     }
 
+    fn distance_to(&self, other: Self) -> i64 {
+        (self.x - other.x).abs() + (self.y - other.y).abs()
+    }
+
     // Note: this method assumes that we already determined the point is an actual intersection
     // so that it's guaranteed to be collinear
     fn is_on_segment(&self, segment: &WireSegment) -> bool {
@@ -85,7 +89,7 @@ impl Point {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct WireSegment {
     start: Point,
     end: Point,
@@ -96,7 +100,10 @@ impl WireSegment {
         WireSegment { start, end }
     }
 
-    // TODO: for tomorrow: make sure the intersection point is actually on both lines...
+    fn len(&self) -> i64 {
+        self.start.distance_to(self.end)
+    }
+
     fn intersection(&self, other: &Self) -> Option<Point> {
         let a1 = self.end.y - self.start.y;
         let b1 = self.start.x - self.end.x;
@@ -127,6 +134,7 @@ impl WireSegment {
     }
 }
 
+#[derive(Clone)]
 struct Wire {
     segments: Vec<WireSegment>,
 }
@@ -158,6 +166,25 @@ impl Wire {
         Self { segments }
     }
 
+    fn retrace_steps(&self, point: &Point) -> i64 {
+        // while not on segment, add segment len
+        // then if on segment, add distance from seg start to point
+        let intersection_segment_index = self
+            .segments
+            .iter()
+            .position(|seg| point.is_on_segment(seg))
+            .unwrap(); // if it panics, something weird must have happened...
+
+        let full_segments_distance: i64 = self
+            .segments
+            .iter()
+            .take(intersection_segment_index)
+            .map(|seg| seg.len())
+            .sum();
+
+        full_segments_distance + point.distance_to(self.segments[intersection_segment_index].start)
+    }
+
     fn all_intersections(&self, other: &Self) -> Vec<Point> {
         self.segments
             .iter()
@@ -178,6 +205,17 @@ impl Wire {
             .0
         // we don't care about distance itself, only the coordinates
     }
+
+    fn least_step_intersection_distance(&self, other: &Self) -> i64 {
+        // all intersections
+        let origin = Point::origin();
+        self.all_intersections(other)
+            .into_iter()
+            .filter(|p| p != &origin) // we don't want origin itself
+            .map(|p| self.retrace_steps(&p) + other.retrace_steps(&p))
+            .min()
+            .unwrap()
+    }
 }
 
 fn do_part1(input_wires: Vec<Wire>) {
@@ -186,6 +224,12 @@ fn do_part1(input_wires: Vec<Wire>) {
         .closest_intersection_to_origin(&input_wires[1])
         .manhattan_distance_to_origin();
     println!("Part 1 answer: {}", closest_intersection_dist);
+}
+
+fn do_part2(input_wires: Vec<Wire>) {
+    assert_eq!(2, input_wires.len()); // as per specs
+    let least_steps = input_wires[0].least_step_intersection_distance(&input_wires[1]);
+    println!("Part 2 answer: {}", least_steps);
 }
 
 fn read_input_file(path: &str) -> Vec<Wire> {
@@ -198,7 +242,8 @@ fn read_input_file(path: &str) -> Vec<Wire> {
 
 fn main() {
     let wires = read_input_file("day3.input");
-    do_part1(wires);
+    do_part1(wires.clone());
+    do_part2(wires);
 }
 
 #[cfg(test)]
@@ -221,11 +266,8 @@ mod tests {
     #[test]
     fn it_correctly_determines_closest_intersection_for_second_input() {
         let wire1 = Wire::new_from_raw("R75,D30,R83,U83,L12,D49,R71,U7,L72");
-
-        wire1.print_segments();
         let wire2 = Wire::new_from_raw("U62,R66,U55,R34,D71,R55,D58,R83");
 
-        wire2.print_segments();
         assert_eq!(
             159,
             wire1
@@ -245,6 +287,30 @@ mod tests {
                 .closest_intersection_to_origin(&wire2)
                 .manhattan_distance_to_origin()
         )
+    }
+
+    #[test]
+    fn it_correctly_determines_closest_intersection_steps_for_first_input() {
+        let wire1 = Wire::new_from_raw("R8,U5,L5,D3");
+        let wire2 = Wire::new_from_raw("U7,R6,D4,L4");
+
+        assert_eq!(30, wire1.least_step_intersection_distance(&wire2))
+    }
+
+    #[test]
+    fn it_correctly_determines_closest_intersection_steps_for_second_input() {
+        let wire1 = Wire::new_from_raw("R75,D30,R83,U83,L12,D49,R71,U7,L72");
+        let wire2 = Wire::new_from_raw("U62,R66,U55,R34,D71,R55,D58,R83");
+
+        assert_eq!(610, wire1.least_step_intersection_distance(&wire2))
+    }
+
+    #[test]
+    fn it_correctly_determines_closest_intersection_steps_for_third_input() {
+        let wire1 = Wire::new_from_raw("R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51");
+        let wire2 = Wire::new_from_raw("U98,R91,D20,R16,D67,R40,U7,R15,U6,R7");
+
+        assert_eq!(410, wire1.least_step_intersection_distance(&wire2))
     }
 
     #[cfg(test)]
