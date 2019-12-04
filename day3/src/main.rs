@@ -113,7 +113,9 @@ impl WireSegment {
                     y: (a1 * c2 - a2 * c1) / delta,
                 };
 
-                if potential_intersection.is_on_segment(self) {
+                if potential_intersection.is_on_segment(self)
+                    && potential_intersection.is_on_segment(other)
+                {
                     Some(potential_intersection)
                 } else {
                     None
@@ -174,8 +176,10 @@ impl Wire {
 
     fn closest_intersection_to_origin(&self, other: &Self) -> Point {
         // all intersections
+        let origin = Point::origin();
         self.all_intersections(other)
             .into_iter()
+            .filter(|p| p != &origin) // we don't want origin itself
             .map(|p| (p, p.manhattan_distance_to_origin() as u64)) // the specs kinda imply only integer values... but that's a bit of a hack here
             .min_by(|(_, d1), (_, d2)| d1.cmp(d2))
             .unwrap()
@@ -206,34 +210,35 @@ fn main() {
 mod tests {
     use super::*;
 
-    //    #[test]
-    //    fn it_correctly_determines_closest_intersection_for_first_input() {
-    //        let wire1 = Wire::new_from_raw("R8,U5,L5,D3");
-    //        let wire2 = Wire::new_from_raw("U7,R6,D4,L4");
-    //
-    //        wire1.print_segments();
-    //
-    //        assert_eq!(
-    //            6,
-    //            wire1
-    //                .closest_intersection_to_origin(&wire2)
-    //                .manhattan_distance_to_origin()
-    //        )
-    //    }
+    #[test]
+    fn it_correctly_determines_closest_intersection_for_first_input() {
+        let wire1 = Wire::new_from_raw("R8,U5,L5,D3");
+        let wire2 = Wire::new_from_raw("U7,R6,D4,L4");
 
-    //    #[test]
-    //    fn it_correctly_determines_closest_intersection_for_second_input() {
-    //        let wire1 = Wire::new_from_raw("R75,D30,R83,U83,L12,D49,R71,U7,L72");
-    //        let wire2 = Wire::new_from_raw("U62,R66,U55,R34,D71,R55,D58,R83");
-    //
-    //        assert_eq!(
-    //            159,
-    //            wire1
-    //                .closest_intersection_to_origin(wire2)
-    //                .manhattan_distance_to_origin()
-    //        )
-    //    }
-    //
+        assert_eq!(
+            6,
+            wire1
+                .closest_intersection_to_origin(&wire2)
+                .manhattan_distance_to_origin()
+        )
+    }
+
+    #[test]
+    fn it_correctly_determines_closest_intersection_for_second_input() {
+        let wire1 = Wire::new_from_raw("R75,D30,R83,U83,L12,D49,R71,U7,L72");
+
+        wire1.print_segments();
+        let wire2 = Wire::new_from_raw("U62,R66,U55,R34,D71,R55,D58,R83");
+
+        wire2.print_segments();
+        assert_eq!(
+            159,
+            wire1
+                .closest_intersection_to_origin(&wire2)
+                .manhattan_distance_to_origin()
+        )
+    }
+
     //    #[test]
     //    fn it_correctly_determines_closest_intersection_for_third_input() {
     //        let wire1 = Wire::new_from_raw("R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51");
@@ -242,7 +247,7 @@ mod tests {
     //        assert_eq!(
     //            135,
     //            wire1
-    //                .closest_intersection_to_origin(wire2)
+    //                .closest_intersection_to_origin(&wire2)
     //                .manhattan_distance_to_origin()
     //        )
     //    }
