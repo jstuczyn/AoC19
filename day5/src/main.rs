@@ -184,9 +184,33 @@ impl OpCodeExecutor for JumpTrueOp {
         let jump_target_val = tape.read(head_position + 2)?;
         let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
 
-        match param < 0 {
-            true => Ok(jump_target as usize),
-            false => Ok(head_position + 3),
+        if param < 0 {
+            Ok(jump_target as usize)
+        } else {
+            Ok(head_position + 3)
+        }
+    }
+}
+
+struct JumpFalseOp {}
+
+impl OpCodeExecutor for JumpFalseOp {
+    fn execute(
+        &self,
+        tape: &mut Tape,
+        head_position: usize,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let arg = tape.read(head_position + 1)?;
+        let param = self.get_param_value(tape, arg, param_modes[0])?;
+
+        let jump_target_val = tape.read(head_position + 2)?;
+        let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
+
+        if param == 0 {
+            Ok(jump_target as usize)
+        } else {
+            Ok(head_position + 3)
         }
     }
 }
@@ -200,7 +224,7 @@ where
     In(Box<Ex>),
     Out(Box<Ex>, Vec<ParamMode>),
     Jt(Box<Ex>, Vec<ParamMode>),
-    //    Jf,
+    Jf(Box<Ex>, Vec<ParamMode>),
     //    Lt,
     //    Eq,
     Halt,
@@ -268,6 +292,17 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 assert_eq!(2, param_modes_vec.len());
 
                 Jt(Box::new(JumpTrueOp {}), param_modes_vec)
+            }
+            JMP_FALSE_OP_CODE => {
+                let mut param_modes_vec: Vec<_> = reversed_padded_digits_iterator
+                    .skip(2)
+                    .take(2)
+                    .map(|x| ParamMode::try_from(x).unwrap())
+                    .collect();
+
+                assert_eq!(2, param_modes_vec.len());
+
+                Jf(Box::new(JumpFalseOp {}), param_modes_vec)
             }
             INPUT_OP_CODE => In(Box::new(InputOp {})),
             OUTPUT_OP_CODE => {
@@ -376,6 +411,7 @@ impl IntcodeMachine {
                 OpCode::Add(op, modes) => (op, modes),
                 OpCode::Mul(op, modes) => (op, modes),
                 OpCode::Jt(op, modes) => (op, modes),
+                OpCode::Jf(op, modes) => (op, modes),
                 OpCode::In(op) => (op, vec![]),
                 OpCode::Out(op, modes) => (op, modes),
             };
