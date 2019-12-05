@@ -511,7 +511,6 @@ fn read_input_file(path: &str) -> Vec<isize> {
 fn run_machine(tape: Tape) {
     // answer will be printed (as per specs) to output (here STDOUT)
     // part1 requires input of 1, part2 of 5
-    let tape = Tape::new(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
     IntcodeMachine::new(tape).run().unwrap();
 }
 
