@@ -277,95 +277,44 @@ impl From<isize> for OpCode {
 
         let digits = utils::num_to_digits_vec(code as usize);
 
-        let reversed_padded_digits_iterator = std::iter::repeat(0).chain(digits.into_iter()).rev();
-
-        let mut opcode_digits: Vec<_> = reversed_padded_digits_iterator.clone().take(2).collect();
+        let mut opcode_digits: Vec<_> = std::iter::repeat(0)
+            .chain(digits.clone().into_iter())
+            .rev()
+            .take(2)
+            .collect();
         opcode_digits.reverse();
         let op_code_value = utils::digits_vec_to_num(&opcode_digits);
 
-        // FIXME: this match is so nasty...
+        let num_args = match op_code_value as isize {
+            ADD_OP_CODE => 3,
+            MUL_OP_CODE => 3,
+            JMP_TRUE_OP_CODE => 2,
+            JMP_FALSE_OP_CODE => 2,
+            LESS_THAN_OP_CODE => 3,
+            EQUALS_OP_CODE => 3,
+            INPUT_OP_CODE => 0,
+            OUTPUT_OP_CODE => 1,
+            HALT_OP_CODE => 0,
+            _ => 0,
+        };
+
+        let param_modes_vec: Vec<_> = std::iter::repeat(0)
+            .chain(digits.into_iter())
+            .rev()
+            .skip(2)
+            .take(num_args)
+            .map(|x| ParamMode::try_from(x).unwrap())
+            .collect();
+
         match op_code_value as isize {
-            ADD_OP_CODE => {
-                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
-                    .skip(2)
-                    .take(3)
-                    .map(|x| ParamMode::try_from(x).unwrap())
-                    .collect();
-
-                assert_eq!(3, param_modes_vec.len());
-                // "Parameters that an instruction writes to will never be in immediate mode."
-                assert_eq!(param_modes_vec[2], ParamMode::Position);
-                Add(param_modes_vec)
-            }
-            MUL_OP_CODE => {
-                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
-                    .skip(2)
-                    .take(3)
-                    .map(|x| ParamMode::try_from(x).unwrap())
-                    .collect();
-
-                assert_eq!(3, param_modes_vec.len());
-                // "Parameters that an instruction writes to will never be in immediate mode."
-                assert_eq!(param_modes_vec[2], ParamMode::Position);
-
-                Mul(param_modes_vec)
-            }
-            JMP_TRUE_OP_CODE => {
-                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
-                    .skip(2)
-                    .take(2)
-                    .map(|x| ParamMode::try_from(x).unwrap())
-                    .collect();
-
-                assert_eq!(2, param_modes_vec.len());
-
-                Jt(param_modes_vec)
-            }
-            JMP_FALSE_OP_CODE => {
-                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
-                    .skip(2)
-                    .take(2)
-                    .map(|x| ParamMode::try_from(x).unwrap())
-                    .collect();
-
-                assert_eq!(2, param_modes_vec.len());
-
-                Jf(param_modes_vec)
-            }
-            LESS_THAN_OP_CODE => {
-                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
-                    .skip(2)
-                    .take(3)
-                    .map(|x| ParamMode::try_from(x).unwrap())
-                    .collect();
-
-                assert_eq!(3, param_modes_vec.len());
-
-                Lt(param_modes_vec)
-            }
-            EQUALS_OP_CODE => {
-                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
-                    .skip(2)
-                    .take(3)
-                    .map(|x| ParamMode::try_from(x).unwrap())
-                    .collect();
-
-                assert_eq!(3, param_modes_vec.len());
-
-                Eq(param_modes_vec)
-            }
+            ADD_OP_CODE => Add(param_modes_vec),
+            MUL_OP_CODE => Mul(param_modes_vec),
+            JMP_TRUE_OP_CODE => Jt(param_modes_vec),
+            JMP_FALSE_OP_CODE => Jf(param_modes_vec),
+            LESS_THAN_OP_CODE => Lt(param_modes_vec),
+            EQUALS_OP_CODE => Eq(param_modes_vec),
             INPUT_OP_CODE => In,
-            OUTPUT_OP_CODE => {
-                let param_mode_vec: Vec<_> = reversed_padded_digits_iterator
-                    .skip(2)
-                    .take(1)
-                    .map(|x| ParamMode::try_from(x).unwrap())
-                    .collect();
-
-                assert_eq!(1, param_mode_vec.len());
-
-                Out(param_mode_vec)
-            }
+            OUTPUT_OP_CODE => Out(param_modes_vec),
             HALT_OP_CODE => Halt,
             _ => Er(code),
         }
