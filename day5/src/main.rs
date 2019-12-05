@@ -1,10 +1,36 @@
+mod utils;
+
+use std::convert::TryFrom;
 use std::fs;
 
 const ADD_OP_CODE: isize = 1;
 const MUL_OP_CODE: isize = 2;
+const INPUT_OP_CODE: isize = 3;
+const OUTPUT_OP_CODE: isize = 4;
 const HALT_OP_CODE: isize = 99;
 
-//type Foo: Fn(Vec<isize>) -> isize;
+const POSITION_MODE: usize = 0; // 1 0 0 => add from idx 0 and 0 => 1 + 1
+const IMMEDIATE_MODE: usize = 1; // 1 0 0 => add literally 0 and 0 => 0 + 0
+
+#[derive(Debug)]
+enum ParamMode {
+    Position,
+    Immediate,
+}
+
+impl TryFrom<usize> for ParamMode {
+    type Error = ();
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        use ParamMode::*;
+
+        match value {
+            0 => Ok(Position),
+            1 => Ok(Immediate),
+            _ => Err(()),
+        }
+    }
+}
 
 type HeadAdvancement = isize;
 
@@ -115,19 +141,49 @@ where
 {
     Add(Box<Ex>),
     Mul(Box<Ex>),
-    //    Input,
-    //    Output,
+    Input,
+    Output,
     Halt,
     Err(isize),
 }
+
+//impl<Ex> OpCode<Ex>
+//where
+//    Ex: OpCodeExecutor,
+//{
+//
+//}
 
 impl From<isize> for OpCode<dyn OpCodeExecutor> {
     fn from(code: isize) -> Self {
         use OpCode::*;
 
+        // make sure the opcode itself is positive, otherwise we have an invalid execution
+        if code < 0 {
+            return Err(code);
+        }
+
+        let digits = utils::num_to_digits_vec(code as usize);
+        // last two digits represent the actual operation_code, the rest are param modes
+        //        let (explicit_param_modes, op_code) = match digits.len() {
+        //            0 => panic!("impossible branch - opcode contains NO digits"),
+        //            1  | 2 => (vec![], utils::digits_vec_to_num(&digits)),
+        //            n => {
+        //                vec![], utils::digits_vec_to_num()
+        //
+        //            }
+        //        }
+
+        std::iter::repeat(0)
+            .chain(digits.into_iter())
+            .take(2)
+            .collect();
+
         match code {
             ADD_OP_CODE => Add(Box::new(AddOp {})),
             MUL_OP_CODE => Mul(Box::new(MulOp {})),
+            INPUT_OP_CODE => Input,
+            OUTPUT_OP_CODE => Output,
             HALT_OP_CODE => Halt,
             _ => Err(code),
         }
@@ -223,6 +279,9 @@ impl IntcodeMachine {
                 }
                 OpCode::Add(op) => op,
                 OpCode::Mul(op) => op,
+
+                OpCode::Input => return Ok(42),
+                OpCode::Output => return Ok(42),
             };
 
             let head_adv = op.execute(&mut self.tape, self.head_position)?;
