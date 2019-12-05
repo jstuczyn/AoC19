@@ -215,6 +215,33 @@ impl OpCodeExecutor for JumpFalseOp {
     }
 }
 
+struct LessThanOp {}
+
+impl OpCodeExecutor for LessThanOp {
+    fn execute(
+        &self,
+        tape: &mut Tape,
+        head_position: usize,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let arg1 = tape.read(head_position + 1)?;
+        let param1 = self.get_param_value(tape, arg1, param_modes[0])?;
+
+        let arg2 = tape.read(head_position + 2)?;
+        let param2 = self.get_param_value(tape, arg2, param_modes[1])?;
+
+        let store_target = tape.read(head_position + 3)?;
+
+        if param1 < param2 {
+            tape.write(store_target as usize, 1)?;
+        } else {
+            tape.write(store_target as usize, 0)?;
+        }
+
+        Ok(head_position + 4)
+    }
+}
+
 enum OpCode<Ex>
 where
     Ex: OpCodeExecutor + ?Sized,
@@ -225,7 +252,7 @@ where
     Out(Box<Ex>, Vec<ParamMode>),
     Jt(Box<Ex>, Vec<ParamMode>),
     Jf(Box<Ex>, Vec<ParamMode>),
-    //    Lt,
+    Lt(Box<Ex>, Vec<ParamMode>),
     //    Eq,
     Halt,
     Err(isize),
@@ -303,6 +330,17 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 assert_eq!(2, param_modes_vec.len());
 
                 Jf(Box::new(JumpFalseOp {}), param_modes_vec)
+            }
+            LESS_THAN_OP_CODE => {
+                let mut param_modes_vec: Vec<_> = reversed_padded_digits_iterator
+                    .skip(2)
+                    .take(3)
+                    .map(|x| ParamMode::try_from(x).unwrap())
+                    .collect();
+
+                assert_eq!(2, param_modes_vec.len());
+
+                Lt(Box::new(LessThanOp {}), param_modes_vec)
             }
             INPUT_OP_CODE => In(Box::new(InputOp {})),
             OUTPUT_OP_CODE => {
@@ -412,6 +450,7 @@ impl IntcodeMachine {
                 OpCode::Mul(op, modes) => (op, modes),
                 OpCode::Jt(op, modes) => (op, modes),
                 OpCode::Jf(op, modes) => (op, modes),
+                OpCode::Lt(op, modes) => (op, modes),
                 OpCode::In(op) => (op, vec![]),
                 OpCode::Out(op, modes) => (op, modes),
             };
