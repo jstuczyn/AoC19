@@ -45,6 +45,8 @@ type HeadPositionUpdate = usize;
 enum OpCodeExecutionError {
     TapeError,
     InvalidOpArguments,
+    ExecutionFailure,
+    ExecutionFinished,
 }
 
 impl From<TapeError> for OpCodeExecutionError {
@@ -53,13 +55,41 @@ impl From<TapeError> for OpCodeExecutionError {
     }
 }
 
-trait OpCodeExecutor {
+enum OpCode {
+    Add(Vec<ParamMode>),
+    Mul(Vec<ParamMode>),
+    In,
+    Out(Vec<ParamMode>),
+    Jt(Vec<ParamMode>),
+    Jf(Vec<ParamMode>),
+    Lt(Vec<ParamMode>),
+    Eq(Vec<ParamMode>),
+    Halt,
+    Er(isize),
+}
+
+impl OpCode {
     fn execute(
         &self,
         tape: &mut Tape,
         head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError>;
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        use OpCode::*;
+        match self {
+            Add(param_modes) => self.execute_add(tape, head_position, param_modes.clone()),
+            Mul(param_modes) => self.execute_mul(tape, head_position, param_modes.clone()),
+            Jt(param_modes) => self.execute_less_than(tape, head_position, param_modes.clone()),
+            Jf(param_modes) => self.execute_jump_false(tape, head_position, param_modes.clone()),
+            Lt(param_modes) => self.execute_jump_true(tape, head_position, param_modes.clone()),
+            Eq(param_modes) => self.execute_equals(tape, head_position, param_modes.clone()),
+
+            In => self.execute_input(tape, head_position),
+            Out(param_modes) => self.execute_output(tape, head_position, param_modes.clone()),
+
+            Halt => Err(OpCodeExecutionError::ExecutionFinished),
+            Er(_) => Err(OpCodeExecutionError::ExecutionFailure),
+        }
+    }
 
     fn get_param_value(
         &self,
@@ -78,12 +108,8 @@ trait OpCodeExecutor {
             ParamMode::Immediate => Ok(literal_value),
         }
     }
-}
 
-struct AddOp {}
-
-impl OpCodeExecutor for AddOp {
-    fn execute(
+    fn execute_add(
         &self,
         tape: &mut Tape,
         head_position: usize,
@@ -102,12 +128,8 @@ impl OpCodeExecutor for AddOp {
 
         Ok(head_position + 4)
     }
-}
 
-struct MulOp {}
-
-impl OpCodeExecutor for MulOp {
-    fn execute(
+    fn execute_mul(
         &self,
         tape: &mut Tape,
         head_position: usize,
@@ -126,99 +148,8 @@ impl OpCodeExecutor for MulOp {
 
         Ok(head_position + 4)
     }
-}
 
-struct InputOp {}
-
-impl OpCodeExecutor for InputOp {
-    fn execute(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        _param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        // read input literals
-        let output_idx = tape.read(head_position + 1)?;
-
-        // Read the user input
-        println!("Provide the system required input...");
-        let mut buffer = String::new();
-        std::io::stdin().read_line(&mut buffer).unwrap();
-        let input_value = buffer.trim().parse::<isize>().unwrap();
-
-        // finally write the result back to the tape
-        tape.write(output_idx as usize, input_value)?;
-
-        Ok(head_position + 2)
-    }
-}
-
-struct OutputOp {}
-
-impl OpCodeExecutor for OutputOp {
-    fn execute(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let output_source_idx = tape.read(head_position + 1)?;
-        let output_val = self.get_param_value(tape, output_source_idx, param_modes[0])?;
-        println!("Test result: {}", output_val);
-        Ok(head_position + 2)
-    }
-}
-
-struct JumpTrueOp {}
-
-impl OpCodeExecutor for JumpTrueOp {
-    fn execute(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let arg = tape.read(head_position + 1)?;
-        let param = self.get_param_value(tape, arg, param_modes[0])?;
-
-        let jump_target_val = tape.read(head_position + 2)?;
-        let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
-
-        if param != 0 {
-            Ok(jump_target as usize)
-        } else {
-            Ok(head_position + 3)
-        }
-    }
-}
-
-struct JumpFalseOp {}
-
-impl OpCodeExecutor for JumpFalseOp {
-    fn execute(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let arg = tape.read(head_position + 1)?;
-        let param = self.get_param_value(tape, arg, param_modes[0])?;
-
-        let jump_target_val = tape.read(head_position + 2)?;
-        let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
-
-        if param == 0 {
-            Ok(jump_target as usize)
-        } else {
-            Ok(head_position + 3)
-        }
-    }
-}
-
-struct LessThanOp {}
-
-impl OpCodeExecutor for LessThanOp {
-    fn execute(
+    fn execute_less_than(
         &self,
         tape: &mut Tape,
         head_position: usize,
@@ -240,12 +171,46 @@ impl OpCodeExecutor for LessThanOp {
 
         Ok(head_position + 4)
     }
-}
 
-struct EqualsOp {}
+    fn execute_jump_true(
+        &self,
+        tape: &mut Tape,
+        head_position: usize,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let arg = tape.read(head_position + 1)?;
+        let param = self.get_param_value(tape, arg, param_modes[0])?;
 
-impl OpCodeExecutor for EqualsOp {
-    fn execute(
+        let jump_target_val = tape.read(head_position + 2)?;
+        let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
+
+        if param != 0 {
+            Ok(jump_target as usize)
+        } else {
+            Ok(head_position + 3)
+        }
+    }
+
+    fn execute_jump_false(
+        &self,
+        tape: &mut Tape,
+        head_position: usize,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let arg = tape.read(head_position + 1)?;
+        let param = self.get_param_value(tape, arg, param_modes[0])?;
+
+        let jump_target_val = tape.read(head_position + 2)?;
+        let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
+
+        if param == 0 {
+            Ok(jump_target as usize)
+        } else {
+            Ok(head_position + 3)
+        }
+    }
+
+    fn execute_equals(
         &self,
         tape: &mut Tape,
         head_position: usize,
@@ -267,38 +232,47 @@ impl OpCodeExecutor for EqualsOp {
 
         Ok(head_position + 4)
     }
+
+    fn execute_input(
+        &self,
+        tape: &mut Tape,
+        head_position: usize,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        // read input literals
+        let output_idx = tape.read(head_position + 1)?;
+
+        // Read the user input
+        println!("Provide the system required input...");
+        let mut buffer = String::new();
+        std::io::stdin().read_line(&mut buffer).unwrap();
+        let input_value = buffer.trim().parse::<isize>().unwrap();
+
+        // finally write the result back to the tape
+        tape.write(output_idx as usize, input_value)?;
+
+        Ok(head_position + 2)
+    }
+
+    fn execute_output(
+        &self,
+        tape: &mut Tape,
+        head_position: usize,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let output_source_idx = tape.read(head_position + 1)?;
+        let output_val = self.get_param_value(tape, output_source_idx, param_modes[0])?;
+        println!("Test result: {}", output_val);
+        Ok(head_position + 2)
+    }
 }
 
-enum OpCode<Ex>
-where
-    Ex: OpCodeExecutor + ?Sized,
-{
-    Add(Box<Ex>, Vec<ParamMode>),
-    Mul(Box<Ex>, Vec<ParamMode>),
-    In(Box<Ex>),
-    Out(Box<Ex>, Vec<ParamMode>),
-    Jt(Box<Ex>, Vec<ParamMode>),
-    Jf(Box<Ex>, Vec<ParamMode>),
-    Lt(Box<Ex>, Vec<ParamMode>),
-    Eq(Box<Ex>, Vec<ParamMode>),
-    Halt,
-    Err(isize),
-}
-
-//impl<Ex> OpCode<Ex>
-//where
-//    Ex: OpCodeExecutor,
-//{
-//
-//}
-
-impl From<isize> for OpCode<dyn OpCodeExecutor> {
+impl From<isize> for OpCode {
     fn from(code: isize) -> Self {
         use OpCode::*;
 
         // make sure the opcode itself is positive, otherwise we have an invalid execution
         if code < 0 {
-            return Err(code);
+            return Er(code);
         }
 
         let digits = utils::num_to_digits_vec(code as usize);
@@ -321,7 +295,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 assert_eq!(3, param_modes_vec.len());
                 // "Parameters that an instruction writes to will never be in immediate mode."
                 assert_eq!(param_modes_vec[2], ParamMode::Position);
-                Add(Box::new(AddOp {}), param_modes_vec)
+                Add(param_modes_vec)
             }
             MUL_OP_CODE => {
                 let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
@@ -334,7 +308,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 // "Parameters that an instruction writes to will never be in immediate mode."
                 assert_eq!(param_modes_vec[2], ParamMode::Position);
 
-                Mul(Box::new(MulOp {}), param_modes_vec)
+                Mul(param_modes_vec)
             }
             JMP_TRUE_OP_CODE => {
                 let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
@@ -345,7 +319,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
 
                 assert_eq!(2, param_modes_vec.len());
 
-                Jt(Box::new(JumpTrueOp {}), param_modes_vec)
+                Jt(param_modes_vec)
             }
             JMP_FALSE_OP_CODE => {
                 let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
@@ -356,7 +330,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
 
                 assert_eq!(2, param_modes_vec.len());
 
-                Jf(Box::new(JumpFalseOp {}), param_modes_vec)
+                Jf(param_modes_vec)
             }
             LESS_THAN_OP_CODE => {
                 let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
@@ -367,7 +341,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
 
                 assert_eq!(3, param_modes_vec.len());
 
-                Lt(Box::new(LessThanOp {}), param_modes_vec)
+                Lt(param_modes_vec)
             }
             EQUALS_OP_CODE => {
                 let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
@@ -378,9 +352,9 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
 
                 assert_eq!(3, param_modes_vec.len());
 
-                Eq(Box::new(EqualsOp {}), param_modes_vec)
+                Eq(param_modes_vec)
             }
-            INPUT_OP_CODE => In(Box::new(InputOp {})),
+            INPUT_OP_CODE => In,
             OUTPUT_OP_CODE => {
                 let param_mode_vec: Vec<_> = reversed_padded_digits_iterator
                     .skip(2)
@@ -390,10 +364,10 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
 
                 assert_eq!(1, param_mode_vec.len());
 
-                Out(Box::new(OutputOp {}), param_mode_vec)
+                Out(param_mode_vec)
             }
             HALT_OP_CODE => Halt,
-            _ => Err(code),
+            _ => Er(code),
         }
     }
 }
@@ -478,23 +452,18 @@ impl IntcodeMachine {
 
     fn run(&mut self) -> Result<isize, IntcodeMachineError> {
         loop {
-            let (op, modes) = match OpCode::from(self.tape.read(self.head_position)?) {
-                OpCode::Err(_) => return Err(IntcodeMachineError::ExecutionFailure),
-                OpCode::Halt => {
-                    self.output = self.tape.read(0)?;
-                    return Ok(self.output);
-                }
-                OpCode::Add(op, modes) => (op, modes),
-                OpCode::Mul(op, modes) => (op, modes),
-                OpCode::Jt(op, modes) => (op, modes),
-                OpCode::Jf(op, modes) => (op, modes),
-                OpCode::Lt(op, modes) => (op, modes),
-                OpCode::Eq(op, modes) => (op, modes),
-                OpCode::In(op) => (op, vec![]),
-                OpCode::Out(op, modes) => (op, modes),
+            let op = OpCode::from(self.tape.read(self.head_position)?);
+            let head_update = match op.execute(&mut self.tape, self.head_position) {
+                Err(err) => match (err) {
+                    OpCodeExecutionError::ExecutionFinished => {
+                        self.output = self.tape.read(0)?;
+                        return Ok(self.output);
+                    }
+                    _ => return Err(IntcodeMachineError::ExecutionFailure),
+                },
+                Ok(head_update) => head_update,
             };
 
-            let head_update = op.execute(&mut self.tape, self.head_position, modes)?;
             self.advance_head(head_update)?;
         }
     }
@@ -604,7 +573,7 @@ mod tests {
         #[test]
         fn works_for_basic_addition() {
             match OpCode::from(1) {
-                OpCode::Add(_, param_vec) => {
+                OpCode::Add(param_vec) => {
                     assert_eq!(ParamMode::Position, param_vec[0]);
                     assert_eq!(ParamMode::Position, param_vec[1]);
                     assert_eq!(ParamMode::Position, param_vec[2]);
@@ -617,7 +586,7 @@ mod tests {
         #[test]
         fn works_for_basic_addition_with_zero_prefix() {
             match OpCode::from(101) {
-                OpCode::Add(_, param_vec) => {
+                OpCode::Add(param_vec) => {
                     assert_eq!(ParamMode::Immediate, param_vec[0]);
                     assert_eq!(ParamMode::Position, param_vec[1]);
                     assert_eq!(ParamMode::Position, param_vec[2]);
@@ -629,7 +598,7 @@ mod tests {
         #[test]
         fn work_for_addition_with_implicit_mode() {
             match OpCode::from(1101) {
-                OpCode::Add(_, param_vec) => {
+                OpCode::Add(param_vec) => {
                     assert_eq!(ParamMode::Immediate, param_vec[0]);
                     assert_eq!(ParamMode::Immediate, param_vec[1]);
                     assert_eq!(ParamMode::Position, param_vec[2]);
