@@ -184,7 +184,7 @@ impl OpCodeExecutor for JumpTrueOp {
         let jump_target_val = tape.read(head_position + 2)?;
         let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
 
-        if param < 0 {
+        if param != 0 {
             Ok(jump_target as usize)
         } else {
             Ok(head_position + 3)
@@ -312,7 +312,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
         // FIXME: this match is so nasty...
         match op_code_value as isize {
             ADD_OP_CODE => {
-                let mut param_modes_vec: Vec<_> = reversed_padded_digits_iterator
+                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
                     .skip(2)
                     .take(3)
                     .map(|x| ParamMode::try_from(x).unwrap())
@@ -324,7 +324,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 Add(Box::new(AddOp {}), param_modes_vec)
             }
             MUL_OP_CODE => {
-                let mut param_modes_vec: Vec<_> = reversed_padded_digits_iterator
+                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
                     .skip(2)
                     .take(3)
                     .map(|x| ParamMode::try_from(x).unwrap())
@@ -337,7 +337,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 Mul(Box::new(MulOp {}), param_modes_vec)
             }
             JMP_TRUE_OP_CODE => {
-                let mut param_modes_vec: Vec<_> = reversed_padded_digits_iterator
+                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
                     .skip(2)
                     .take(2)
                     .map(|x| ParamMode::try_from(x).unwrap())
@@ -348,7 +348,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 Jt(Box::new(JumpTrueOp {}), param_modes_vec)
             }
             JMP_FALSE_OP_CODE => {
-                let mut param_modes_vec: Vec<_> = reversed_padded_digits_iterator
+                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
                     .skip(2)
                     .take(2)
                     .map(|x| ParamMode::try_from(x).unwrap())
@@ -359,7 +359,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 Jf(Box::new(JumpFalseOp {}), param_modes_vec)
             }
             LESS_THAN_OP_CODE => {
-                let mut param_modes_vec: Vec<_> = reversed_padded_digits_iterator
+                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
                     .skip(2)
                     .take(3)
                     .map(|x| ParamMode::try_from(x).unwrap())
@@ -370,7 +370,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
                 Lt(Box::new(LessThanOp {}), param_modes_vec)
             }
             EQUALS_OP_CODE => {
-                let mut param_modes_vec: Vec<_> = reversed_padded_digits_iterator
+                let param_modes_vec: Vec<_> = reversed_padded_digits_iterator
                     .skip(2)
                     .take(3)
                     .map(|x| ParamMode::try_from(x).unwrap())
@@ -378,7 +378,7 @@ impl From<isize> for OpCode<dyn OpCodeExecutor> {
 
                 assert_eq!(3, param_modes_vec.len());
 
-                Lt(Box::new(EqualsOp {}), param_modes_vec)
+                Eq(Box::new(EqualsOp {}), param_modes_vec)
             }
             INPUT_OP_CODE => In(Box::new(InputOp {})),
             OUTPUT_OP_CODE => {
@@ -511,6 +511,7 @@ fn read_input_file(path: &str) -> Vec<isize> {
 fn run_machine(tape: Tape) {
     // answer will be printed (as per specs) to output (here STDOUT)
     // part1 requires input of 1, part2 of 5
+    let tape = Tape::new(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
     IntcodeMachine::new(tape).run().unwrap();
 }
 
