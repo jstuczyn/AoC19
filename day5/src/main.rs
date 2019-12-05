@@ -91,12 +91,13 @@ impl OpCode {
         }
     }
 
-    fn get_param_value(
+    fn mode_tape_read(
         &self,
         tape: &Tape,
-        literal_value: isize,
+        tape_idx: usize,
         param_mode: ParamMode,
     ) -> Result<isize, OpCodeExecutionError> {
+        let literal_value = tape.read(tape_idx)?;
         match param_mode {
             ParamMode::Position => {
                 if literal_value < 0 {
@@ -115,15 +116,10 @@ impl OpCode {
         head_position: usize,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        // read input literals
-        let input1_val = tape.read(head_position + 1)?;
-        let input2_val = tape.read(head_position + 2)?;
+        let result = self.mode_tape_read(tape, head_position + 1, param_modes[0])?
+            + self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
+
         let output_idx = tape.read(head_position + 3)?;
-
-        let result = self.get_param_value(tape, input1_val, param_modes[0])?
-            + self.get_param_value(tape, input2_val, param_modes[1])?;
-
-        // finally write the result back to the tape
         tape.write(output_idx as usize, result)?;
 
         Ok(head_position + 4)
@@ -135,15 +131,10 @@ impl OpCode {
         head_position: usize,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        // read input literals
-        let input1_val = tape.read(head_position + 1)?;
-        let input2_val = tape.read(head_position + 2)?;
+        let result = self.mode_tape_read(tape, head_position + 1, param_modes[0])?
+            * self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
+
         let output_idx = tape.read(head_position + 3)?;
-
-        let result = self.get_param_value(tape, input1_val, param_modes[0])?
-            * self.get_param_value(tape, input2_val, param_modes[1])?;
-
-        // finally write the result back to the tape
         tape.write(output_idx as usize, result)?;
 
         Ok(head_position + 4)
@@ -155,12 +146,8 @@ impl OpCode {
         head_position: usize,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let arg1 = tape.read(head_position + 1)?;
-        let param1 = self.get_param_value(tape, arg1, param_modes[0])?;
-
-        let arg2 = tape.read(head_position + 2)?;
-        let param2 = self.get_param_value(tape, arg2, param_modes[1])?;
-
+        let param1 = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
+        let param2 = self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
         let store_target = tape.read(head_position + 3)?;
 
         if param1 < param2 {
@@ -178,11 +165,8 @@ impl OpCode {
         head_position: usize,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let arg = tape.read(head_position + 1)?;
-        let param = self.get_param_value(tape, arg, param_modes[0])?;
-
-        let jump_target_val = tape.read(head_position + 2)?;
-        let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
+        let param = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
+        let jump_target = self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
 
         if param != 0 {
             Ok(jump_target as usize)
@@ -197,11 +181,8 @@ impl OpCode {
         head_position: usize,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let arg = tape.read(head_position + 1)?;
-        let param = self.get_param_value(tape, arg, param_modes[0])?;
-
-        let jump_target_val = tape.read(head_position + 2)?;
-        let jump_target = self.get_param_value(tape, jump_target_val, param_modes[1])?;
+        let param = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
+        let jump_target = self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
 
         if param == 0 {
             Ok(jump_target as usize)
@@ -216,12 +197,8 @@ impl OpCode {
         head_position: usize,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let arg1 = tape.read(head_position + 1)?;
-        let param1 = self.get_param_value(tape, arg1, param_modes[0])?;
-
-        let arg2 = tape.read(head_position + 2)?;
-        let param2 = self.get_param_value(tape, arg2, param_modes[1])?;
-
+        let param1 = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
+        let param2 = self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
         let store_target = tape.read(head_position + 3)?;
 
         if param1 == param2 {
@@ -238,7 +215,6 @@ impl OpCode {
         tape: &mut Tape,
         head_position: usize,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        // read input literals
         let output_idx = tape.read(head_position + 1)?;
 
         // Read the user input
@@ -247,7 +223,6 @@ impl OpCode {
         std::io::stdin().read_line(&mut buffer).unwrap();
         let input_value = buffer.trim().parse::<isize>().unwrap();
 
-        // finally write the result back to the tape
         tape.write(output_idx as usize, input_value)?;
 
         Ok(head_position + 2)
@@ -259,8 +234,7 @@ impl OpCode {
         head_position: usize,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let output_source_idx = tape.read(head_position + 1)?;
-        let output_val = self.get_param_value(tape, output_source_idx, param_modes[0])?;
+        let output_val = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
         println!("Test result: {}", output_val);
         Ok(head_position + 2)
     }
@@ -389,7 +363,7 @@ impl IntcodeMachine {
         }
     }
 
-    fn advance_head(&mut self, val: HeadPositionUpdate) -> Result<(), IntcodeMachineError> {
+    fn update_head(&mut self, val: HeadPositionUpdate) -> Result<(), IntcodeMachineError> {
         // check if new head is within 0..tape.len()
         if !(0..self.tape.len()).contains(&val) {
             return Err(IntcodeMachineError::TapeOutOfBoundsError);
@@ -403,7 +377,7 @@ impl IntcodeMachine {
         loop {
             let op = OpCode::from(self.tape.read(self.head_position)?);
             let head_update = match op.execute(&mut self.tape, self.head_position) {
-                Err(err) => match (err) {
+                Err(err) => match err {
                     OpCodeExecutionError::ExecutionFinished => {
                         self.output = self.tape.read(0)?;
                         return Ok(self.output);
@@ -413,7 +387,7 @@ impl IntcodeMachine {
                 Ok(head_update) => head_update,
             };
 
-            self.advance_head(head_update)?;
+            self.update_head(head_update)?;
         }
     }
 }
