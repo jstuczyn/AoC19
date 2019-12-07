@@ -44,6 +44,7 @@ enum OpCodeExecutionError {
     InvalidOpArguments,
     ExecutionFailure,
     ExecutionFinished,
+    InputFailure,
 }
 
 impl From<TapeError> for OpCodeExecutionError {
@@ -228,7 +229,10 @@ impl OpCode {
 
         let mut buffer = String::new();
         reader.read_line(&mut buffer).unwrap();
-        let input_value = buffer.trim().parse::<isize>().unwrap();
+        let input_value = match buffer.trim().parse::<isize>() {
+            Ok(val) => val,
+            _ => return Err(OpCodeExecutionError::InputFailure),
+        };
 
         tape.write(output_idx as usize, input_value)?;
 
@@ -312,7 +316,7 @@ enum TapeError {
     ReadOutOfRangeError,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Tape(Vec<isize>);
 
 impl Tape {
@@ -346,6 +350,7 @@ impl Tape {
 pub enum IntcodeMachineError {
     TapeOutOfBoundsError,
     ExecutionFailure,
+    InputFailure(State),
 }
 
 impl From<TapeError> for IntcodeMachineError {
@@ -357,6 +362,21 @@ impl From<TapeError> for IntcodeMachineError {
 impl From<OpCodeExecutionError> for IntcodeMachineError {
     fn from(_: OpCodeExecutionError) -> Self {
         IntcodeMachineError::ExecutionFailure
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct State {
+    tape: Tape,
+    head_position: usize,
+}
+
+impl State {
+    pub fn new_from_tape(tape: Tape) -> Self {
+        State {
+            tape,
+            head_position: 0,
+        }
     }
 }
 
@@ -385,6 +405,22 @@ where
         }
     }
 
+    pub fn load_state(state: State, reader: R, writer: W) -> Self {
+        IntcodeMachine {
+            tape: state.tape,
+            head_position: state.head_position,
+            input: reader,
+            output: writer,
+        }
+    }
+
+    pub fn dump_state(&self) -> State {
+        State {
+            tape: self.tape.clone(),
+            head_position: self.head_position,
+        }
+    }
+
     fn update_head(&mut self, val: HeadPositionUpdate) -> Result<(), IntcodeMachineError> {
         // check if new head is within 0..tape.len()
         if !(0..self.tape.len()).contains(&val) {
@@ -408,7 +444,12 @@ where
                     OpCodeExecutionError::ExecutionFinished => {
                         return Ok(self.tape.read(0)?);
                     }
-                    _ => return Err(IntcodeMachineError::ExecutionFailure),
+                    OpCodeExecutionError::InputFailure => {
+                        return Err(IntcodeMachineError::InputFailure(self.dump_state()))
+                    }
+                    _ => {
+                        return Err(IntcodeMachineError::ExecutionFailure);
+                    }
                 },
                 Ok(head_update) => head_update,
             };
