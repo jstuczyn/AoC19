@@ -1,8 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-
-// transitivity
 
 #[derive(Debug)]
 struct OrbitalMap {
@@ -47,8 +45,16 @@ impl OrbitalMap {
         // get path from root to those, list all the nodes alongside
         // find the common node
         // then dist from common to either
+        let source_path = self.depth_first_search(source_name);
+        let dest_path = self.depth_first_search(destination_name);
 
-        42
+        let intersection = source_path
+            .iter()
+            .zip(dest_path.iter())
+            .position(|(se, de)| se != de)
+            .unwrap_or_else(|| source_path.len());
+
+        (source_path.len() - intersection) + (dest_path.len() - intersection)
     }
 
     // it's more likely that our target will be deep in the tree rather than close to the root
@@ -156,8 +162,12 @@ fn read_input_file(path: &str) -> Vec<String> {
     inputs
 }
 
-fn do_part1(orbital_map: OrbitalMap) {
+fn do_part1(orbital_map: &OrbitalMap) {
     println!("Part 1 answer: {}", orbital_map.total_orbit_count());
+}
+
+fn do_part2(orbital_map: &OrbitalMap) {
+    println!("Part 1 answer: {}", orbital_map.num_transfers("YOU", "SAN"));
 }
 
 fn main() {
@@ -165,7 +175,8 @@ fn main() {
     let raw_orbits = parse_orbits(raw_day6_input);
     let orbital_map = OrbitalMap::new(raw_orbits);
 
-    do_part1(orbital_map);
+    do_part1(&orbital_map);
+    do_part2(&orbital_map);
 }
 
 #[cfg(test)]
@@ -214,5 +225,21 @@ mod tests {
         let orbital_map = OrbitalMap::new(raw_orbits);
 
         assert_eq!(4, orbital_map.num_transfers("YOU", "SAN"));
+    }
+
+    #[test]
+    fn sample_2_orbital_map_returns_correct_number_of_orbital_transfers() {
+        let sample_orbits = vec![
+            String::from("COM)A"),
+            String::from("A)B"),
+            String::from("B)C"),
+            String::from("C)D"),
+            String::from("A)YOU"),
+            String::from("D)SAN"),
+        ];
+        let raw_orbits = parse_orbits(sample_orbits);
+        let orbital_map = OrbitalMap::new(raw_orbits);
+
+        assert_eq!(3, orbital_map.num_transfers("YOU", "SAN"));
     }
 }
