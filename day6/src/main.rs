@@ -42,6 +42,21 @@ impl OrbitalMap {
     fn total_orbit_count(&self) -> usize {
         self.global_center_of_mass.orbit_count(1)
     }
+
+    fn num_transfers(&self, source_name: &str, destination_name: &str) -> usize {
+        // get path from root to those, list all the nodes alongside
+        // find the common node
+        // then dist from common to either
+
+        42
+    }
+
+    // it's more likely that our target will be deep in the tree rather than close to the root
+    fn depth_first_search(&self, target_name: &str) -> Vec<&str> {
+        self.global_center_of_mass
+            .find_dfs(target_name, vec![])
+            .unwrap()
+    }
 }
 
 #[derive(Debug)]
@@ -89,6 +104,28 @@ impl Orbit {
 
         self.orbiting_objects
             .extend(other.orbiting_objects.into_iter());
+    }
+
+    fn find_dfs<'a>(
+        &'a self,
+        target_name: &str,
+        current_path: Vec<&'a str>,
+    ) -> Option<Vec<&'a str>> {
+        for orb in &self.orbiting_objects {
+            let mut new_path = current_path.clone();
+            new_path.push(&self.center_of_mass_name);
+
+            if &orb.center_of_mass_name == target_name {
+                return Some(new_path);
+            } else {
+                match orb.find_dfs(target_name, new_path) {
+                    None => (),
+                    Some(path) => return Some(path),
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -154,5 +191,28 @@ mod tests {
         let orbital_map = OrbitalMap::new(raw_orbits);
 
         assert_eq!(42, orbital_map.total_orbit_count());
+    }
+
+    #[test]
+    fn sample_orbital_map_returns_correct_number_of_orbital_transfers() {
+        let sample_orbits = vec![
+            String::from("COM)B"),
+            String::from("B)C"),
+            String::from("C)D"),
+            String::from("D)E"),
+            String::from("E)F"),
+            String::from("B)G"),
+            String::from("G)H"),
+            String::from("D)I"),
+            String::from("E)J"),
+            String::from("J)K"),
+            String::from("K)L"),
+            String::from("K)YOU"),
+            String::from("I)SAN"),
+        ];
+        let raw_orbits = parse_orbits(sample_orbits);
+        let orbital_map = OrbitalMap::new(raw_orbits);
+
+        assert_eq!(4, orbital_map.num_transfers("YOU", "SAN"));
     }
 }
