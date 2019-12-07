@@ -1,10 +1,26 @@
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 // transitivity
 
+#[derive(Debug)]
 struct OrbitalMap {
-    center_of_mass: Orbit,
+    global_center_of_mass: Orbit,
+}
+
+impl OrbitalMap {
+    fn construct(mut orbit_directory: HashMap<String, Orbit>) -> Self {
+        // start with "COM"
+        // if it doesn't exist, panic, because it MUST exist
+        let mut com = orbit_directory.remove("COM").unwrap();
+
+        com.extract_orbiting_object_details(&mut orbit_directory);
+
+        OrbitalMap {
+            global_center_of_mass: com,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -25,6 +41,20 @@ impl Orbit {
         self.orbiting_objects.push(orbiting_object);
     }
 
+    fn extract_orbiting_object_details(&mut self, orbit_directory: &mut HashMap<String, Orbit>) {
+        for mut orbiting_object in &mut self.orbiting_objects {
+            match orbit_directory.remove(&orbiting_object.center_of_mass_name) {
+                None => {
+                    // it's a leaf node so we don't need to do anything
+                }
+                Some(orbit_details) => {
+                    orbiting_object.orbiting_objects = orbit_details.orbiting_objects;
+                    orbiting_object.extract_orbiting_object_details(orbit_directory);
+                }
+            }
+        }
+    }
+
     fn combine(&mut self, other: Orbit) {
         // make sure we are actually trying to combine right objects
         assert_eq!(self.center_of_mass_name, other.center_of_mass_name);
@@ -32,6 +62,24 @@ impl Orbit {
         self.orbiting_objects
             .extend(other.orbiting_objects.into_iter());
     }
+}
+
+fn combine_orbits(raw_orbits: Vec<Orbit>) {
+    let mut orbit_directory: HashMap<String, Orbit> = HashMap::new();
+
+    for orbit in raw_orbits {
+        match orbit_directory.get_mut(&orbit.center_of_mass_name) {
+            Some(orb) => {
+                orb.combine(orbit);
+            }
+            None => {
+                orbit_directory.insert(orbit.center_of_mass_name.clone(), orbit);
+            }
+        }
+    }
+
+    let orbital_map = OrbitalMap::construct(orbit_directory);
+    println!("\n\nFinal map: {:?}", orbital_map);
 }
 
 fn parse_orbits(raw_orbits: Vec<String>) -> Vec<Orbit> {
@@ -64,9 +112,25 @@ fn read_input_file(path: &str) -> Vec<String> {
 fn do_part1() {}
 
 fn main() {
-    let raw_da6_input = read_input_file("day6.input");
-    let raw_orbits = parse_orbits(raw_da6_input);
-    println!("{:?}", raw_orbits);
+    let raw_day6_input = read_input_file("day6.input");
+
+    let raw_day6_input = vec![
+        String::from("COM)B"),
+        String::from("B)C"),
+        String::from("C)D"),
+        String::from("D)E"),
+        String::from("E)F"),
+        String::from("B)G"),
+        String::from("G)H"),
+        String::from("D)I"),
+        String::from("E)J"),
+        String::from("J)K"),
+        String::from("K)L"),
+    ];
+
+    let raw_orbits = parse_orbits(raw_day6_input);
+    combine_orbits(raw_orbits);
+    //    println!("{:?}", raw_orbits);
 }
 
 /*
