@@ -380,6 +380,15 @@ impl State {
     }
 }
 
+impl Default for State {
+    fn default() -> Self {
+        State {
+            tape: Tape(Vec::new()),
+            head_position: 0,
+        }
+    }
+}
+
 pub struct IntcodeMachine<R, W>
 where
     R: BufRead,
