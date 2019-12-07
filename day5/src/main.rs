@@ -78,9 +78,9 @@ impl OpCode {
         match self {
             Add(param_modes) => self.execute_add(tape, head_position, param_modes.clone()),
             Mul(param_modes) => self.execute_mul(tape, head_position, param_modes.clone()),
-            Jt(param_modes) => self.execute_less_than(tape, head_position, param_modes.clone()),
+            Jt(param_modes) => self.execute_jump_true(tape, head_position, param_modes.clone()),
             Jf(param_modes) => self.execute_jump_false(tape, head_position, param_modes.clone()),
-            Lt(param_modes) => self.execute_jump_true(tape, head_position, param_modes.clone()),
+            Lt(param_modes) => self.execute_less_than(tape, head_position, param_modes.clone()),
             Eq(param_modes) => self.execute_equals(tape, head_position, param_modes.clone()),
 
             In => self.execute_input(tape, head_position),
@@ -403,6 +403,7 @@ fn read_input_file(path: &str) -> Vec<isize> {
 fn run_machine(tape: Tape) {
     // answer will be printed (as per specs) to output (here STDOUT)
     // part1 requires input of 1, part2 of 5
+    println!("When asked for input, provide '1' when executing part1 and '5' when executing part2");
     IntcodeMachine::new(tape).run().unwrap();
 }
 
