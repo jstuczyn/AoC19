@@ -226,12 +226,9 @@ impl OpCode {
     {
         let output_idx = tape.read(head_position + 1)?;
 
-        // Read the user input
-        println!("Provide the system required input...");
         let mut buffer = String::new();
         reader.read_line(&mut buffer).unwrap();
         let input_value = buffer.trim().parse::<isize>().unwrap();
-        println!("read: {}", input_value);
 
         tape.write(output_idx as usize, input_value)?;
 
@@ -249,11 +246,7 @@ impl OpCode {
         W: Write,
     {
         let output_val = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
-        print!("Test result: ");
         write!(&mut writer, "{}", output_val).unwrap();
-        print!("\n");
-
-        //        println!("Test result: {}", output_val);
         Ok(head_position + 2)
     }
 }
@@ -319,6 +312,7 @@ enum TapeError {
     ReadOutOfRangeError,
 }
 
+#[derive(Clone)]
 pub struct Tape(Vec<isize>);
 
 impl Tape {
