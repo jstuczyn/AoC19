@@ -474,20 +474,18 @@ mod tests {
 
     #[test]
     fn intcode_machine_still_works_for_day2_part1() {
-        fn produces_expected_output_for_day2_input() {
-            let mut day2_tape = Tape::new(utils::read_input_file("day2.input"));
-            day2_tape.write(1, 12);
-            day2_tape.write(2, 2);
+        let mut day2_tape = Tape::new(utils::read_input_file("day2.input"));
+        day2_tape.write(1, 12).unwrap();
+        day2_tape.write(2, 2).unwrap();
 
-            let dummy_in = b"";
-            let mut dummy_out = Vec::new();
-            assert_eq!(
-                4_138_687,
-                IntcodeMachine::new(day2_tape, &dummy_in[..], &mut dummy_out)
-                    .run()
-                    .unwrap()
-            )
-        }
+        let dummy_in = b"";
+        let mut dummy_out = Vec::new();
+        assert_eq!(
+            4_138_687,
+            IntcodeMachine::new(day2_tape, &dummy_in[..], &mut dummy_out)
+                .run()
+                .unwrap()
+        )
     }
 
     #[test]
