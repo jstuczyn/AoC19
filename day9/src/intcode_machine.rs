@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use std::io::{BufRead, Write};
 
 use crate::utils;
+use std::borrow::Borrow;
 
 const ADD_OP_CODE: isize = 1;
 const MUL_OP_CODE: isize = 2;
@@ -11,15 +12,18 @@ const JMP_TRUE_OP_CODE: isize = 5;
 const JMP_FALSE_OP_CODE: isize = 6;
 const LESS_THAN_OP_CODE: isize = 7;
 const EQUALS_OP_CODE: isize = 8;
+const RLT_BASE_OFFSET_OP_CODE: isize = 9;
 const HALT_OP_CODE: isize = 99;
 
 const POSITION_MODE: usize = 0;
 const IMMEDIATE_MODE: usize = 1;
+const RELATIVE_MODE: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ParamMode {
     Position,
     Immediate,
+    //    Relative,
 }
 
 impl TryFrom<usize> for ParamMode {
@@ -31,6 +35,7 @@ impl TryFrom<usize> for ParamMode {
         match value {
             POSITION_MODE => Ok(Position),
             IMMEDIATE_MODE => Ok(Immediate),
+            //            RELATIVE_MODE => Ok(Relative),
             _ => Err(()),
         }
     }
@@ -62,198 +67,56 @@ enum OpCode {
     Jf(Vec<ParamMode>),
     Lt(Vec<ParamMode>),
     Eq(Vec<ParamMode>),
+    //    Rbo(Vec<ParamMode>),
     Halt,
     Er(isize),
 }
 
-impl OpCode {
-    fn execute<R, W>(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        reader: &mut R,
-        writer: &mut W,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError>
-    where
-        R: BufRead,
-        W: Write,
-    {
-        use OpCode::*;
-        match self {
-            Add(param_modes) => self.execute_add(tape, head_position, param_modes.clone()),
-            Mul(param_modes) => self.execute_mul(tape, head_position, param_modes.clone()),
-            Jt(param_modes) => self.execute_jump_true(tape, head_position, param_modes.clone()),
-            Jf(param_modes) => self.execute_jump_false(tape, head_position, param_modes.clone()),
-            Lt(param_modes) => self.execute_less_than(tape, head_position, param_modes.clone()),
-            Eq(param_modes) => self.execute_equals(tape, head_position, param_modes.clone()),
-
-            In => self.execute_input(tape, head_position, reader),
-            Out(param_modes) => {
-                self.execute_output(tape, head_position, param_modes.clone(), writer)
-            }
-
-            Halt => Err(OpCodeExecutionError::ExecutionFinished),
-            Er(_) => Err(OpCodeExecutionError::ExecutionFailure),
-        }
-    }
-
-    fn mode_tape_read(
-        &self,
-        tape: &Tape,
-        tape_idx: usize,
-        param_mode: ParamMode,
-    ) -> Result<isize, OpCodeExecutionError> {
-        let literal_value = tape.read(tape_idx)?;
-        match param_mode {
-            ParamMode::Position => {
-                if literal_value < 0 {
-                    Err(OpCodeExecutionError::InvalidOpArguments)
-                } else {
-                    Ok(tape.read(literal_value as usize)?)
-                }
-            }
-            ParamMode::Immediate => Ok(literal_value),
-        }
-    }
-
-    fn execute_add(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let result = self.mode_tape_read(tape, head_position + 1, param_modes[0])?
-            + self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
-
-        let output_idx = tape.read(head_position + 3)?;
-        tape.write(output_idx as usize, result)?;
-
-        Ok(head_position + 4)
-    }
-
-    fn execute_mul(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let result = self.mode_tape_read(tape, head_position + 1, param_modes[0])?
-            * self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
-
-        let output_idx = tape.read(head_position + 3)?;
-        tape.write(output_idx as usize, result)?;
-
-        Ok(head_position + 4)
-    }
-
-    fn execute_less_than(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let param1 = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
-        let param2 = self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
-        let store_target = tape.read(head_position + 3)?;
-
-        if param1 < param2 {
-            tape.write(store_target as usize, 1)?;
-        } else {
-            tape.write(store_target as usize, 0)?;
-        }
-
-        Ok(head_position + 4)
-    }
-
-    fn execute_jump_true(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let param = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
-        let jump_target = self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
-
-        if param != 0 {
-            Ok(jump_target as usize)
-        } else {
-            Ok(head_position + 3)
-        }
-    }
-
-    fn execute_jump_false(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let param = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
-        let jump_target = self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
-
-        if param == 0 {
-            Ok(jump_target as usize)
-        } else {
-            Ok(head_position + 3)
-        }
-    }
-
-    fn execute_equals(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let param1 = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
-        let param2 = self.mode_tape_read(tape, head_position + 2, param_modes[1])?;
-        let store_target = tape.read(head_position + 3)?;
-
-        if param1 == param2 {
-            tape.write(store_target as usize, 1)?;
-        } else {
-            tape.write(store_target as usize, 0)?;
-        }
-
-        Ok(head_position + 4)
-    }
-
-    fn execute_input<R>(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        mut reader: R,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError>
-    where
-        R: BufRead,
-    {
-        let output_idx = tape.read(head_position + 1)?;
-
-        let mut buffer = String::new();
-        reader.read_line(&mut buffer).unwrap();
-        let input_value = match buffer.trim().parse::<isize>() {
-            Ok(val) => val,
-            _ => return Err(OpCodeExecutionError::InputFailure),
-        };
-
-        tape.write(output_idx as usize, input_value)?;
-
-        Ok(head_position + 2)
-    }
-
-    fn execute_output<W>(
-        &self,
-        tape: &mut Tape,
-        head_position: usize,
-        param_modes: Vec<ParamMode>,
-        mut writer: W,
-    ) -> Result<HeadPositionUpdate, OpCodeExecutionError>
-    where
-        W: Write,
-    {
-        let output_val = self.mode_tape_read(tape, head_position + 1, param_modes[0])?;
-        write!(&mut writer, "{}", output_val).unwrap();
-        Ok(head_position + 2)
-    }
-}
+//impl OpCode {
+//    fn execute<R, W>(
+//        &self,
+//        tape: &mut Tape,
+//        head_position: usize,
+//        reader: &mut R,
+//        writer: &mut W,
+//    ) -> Result<HeadPositionUpdate, OpCodeExecutionError>
+//    where
+//        R: BufRead,
+//        W: Write,
+//    {
+//        use OpCode::*;
+//        match self {
+//            Add(param_modes) => {
+//                self.execute_add(self.tape, self.head_position, param_modes.clone())
+//            }
+//            Mul(param_modes) => {
+//                self.execute_mul(self.tape, self.head_position, param_modes.clone())
+//            }
+//            Jt(param_modes) => {
+//                self.execute_jump_true(self.tape, self.head_position, param_modes.clone())
+//            }
+//            Jf(param_modes) => {
+//                self.execute_jump_false(self.tape, self.head_position, param_modes.clone())
+//            }
+//            Lt(param_modes) => {
+//                self.execute_less_than(self.tape, self.head_position, param_modes.clone())
+//            }
+//            Eq(param_modes) => {
+//                self.execute_equals(self.tape, self.head_position, param_modes.clone())
+//            }
+//
+//            // TODO:
+//            //            Rbo(param_modes) => self.execute_relative_base_offset(),
+//            In => self.execute_input(self.tape, self.head_position, reader),
+//            Out(param_modes) => {
+//                self.execute_output(self.tape, self.head_position, param_modes.clone(), writer)
+//            }
+//
+//            Halt => Err(OpCodeExecutionError::ExecutionFinished),
+//            Er(_) => Err(OpCodeExecutionError::ExecutionFailure),
+//        }
+//    }
+//}
 
 impl From<isize> for OpCode {
     fn from(code: isize) -> Self {
@@ -344,6 +207,25 @@ impl Tape {
 
         Ok(self.0[position])
     }
+
+    fn mode_read(&self, tape_idx: usize, param_mode: ParamMode) -> Result<isize, TapeError> {
+        let literal_value = self.read(tape_idx)?;
+        match param_mode {
+            ParamMode::Position => {
+                if literal_value < 0 {
+                    Err(TapeError::ReadOutOfRangeError)
+                } else {
+                    Ok(self.read(literal_value as usize)?)
+                }
+            }
+            ParamMode::Immediate => Ok(literal_value),
+            //            ParamMode::Relative => Ok(literal_value),
+        }
+    }
+
+    fn mode_write(&mut self, tape_idx: usize, param_mode: ParamMode) -> Result<(), TapeError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -396,6 +278,7 @@ where
 {
     tape: Tape,
     head_position: usize,
+
     input: R,
     output: W,
 }
@@ -440,15 +323,168 @@ where
         Ok(())
     }
 
+    fn execute_add(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let result = self
+            .tape
+            .mode_read(self.head_position + 1, param_modes[0])?
+            + self
+                .tape
+                .mode_read(self.head_position + 2, param_modes[1])?;
+
+        let output_idx = self.tape.read(self.head_position + 3)?;
+        self.tape.write(output_idx as usize, result)?;
+
+        Ok(self.head_position + 4)
+    }
+
+    fn execute_mul(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let result = self
+            .tape
+            .mode_read(self.head_position + 1, param_modes[0])?
+            * self
+                .tape
+                .mode_read(self.head_position + 2, param_modes[1])?;
+
+        let output_idx = self.tape.read(self.head_position + 3)?;
+        self.tape.write(output_idx as usize, result)?;
+
+        Ok(self.head_position + 4)
+    }
+
+    fn execute_less_than(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let param1 = self
+            .tape
+            .mode_read(self.head_position + 1, param_modes[0])?;
+        let param2 = self
+            .tape
+            .mode_read(self.head_position + 2, param_modes[1])?;
+        let store_target = self.tape.read(self.head_position + 3)?;
+
+        if param1 < param2 {
+            self.tape.write(store_target as usize, 1)?;
+        } else {
+            self.tape.write(store_target as usize, 0)?;
+        }
+
+        Ok(self.head_position + 4)
+    }
+
+    fn execute_jump_true(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let param = self
+            .tape
+            .mode_read(self.head_position + 1, param_modes[0])?;
+        let jump_target = self
+            .tape
+            .mode_read(self.head_position + 2, param_modes[1])?;
+
+        if param != 0 {
+            Ok(jump_target as usize)
+        } else {
+            Ok(self.head_position + 3)
+        }
+    }
+
+    fn execute_jump_false(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let param = self
+            .tape
+            .mode_read(self.head_position + 1, param_modes[0])?;
+        let jump_target = self
+            .tape
+            .mode_read(self.head_position + 2, param_modes[1])?;
+
+        if param == 0 {
+            Ok(jump_target as usize)
+        } else {
+            Ok(self.head_position + 3)
+        }
+    }
+
+    fn execute_equals(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let param1 = self
+            .tape
+            .mode_read(self.head_position + 1, param_modes[0])?;
+        let param2 = self
+            .tape
+            .mode_read(self.head_position + 2, param_modes[1])?;
+        let store_target = self.tape.read(self.head_position + 3)?;
+
+        if param1 == param2 {
+            self.tape.write(store_target as usize, 1)?;
+        } else {
+            self.tape.write(store_target as usize, 0)?;
+        }
+
+        Ok(self.head_position + 4)
+    }
+
+    fn execute_input(&mut self) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let output_idx = self.tape.read(self.head_position + 1)?;
+
+        let mut buffer = String::new();
+        self.input.read_line(&mut buffer).unwrap();
+        let input_value = match buffer.trim().parse::<isize>() {
+            Ok(val) => val,
+            _ => return Err(OpCodeExecutionError::InputFailure),
+        };
+
+        self.tape.write(output_idx as usize, input_value)?;
+
+        Ok(self.head_position + 2)
+    }
+
+    fn execute_output(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let output_val = self
+            .tape
+            .mode_read(self.head_position + 1, param_modes[0])?;
+        write!(&mut self.output, "{}", output_val).unwrap();
+        Ok(self.head_position + 2)
+    }
+
+    fn execute_op(&mut self, op: OpCode) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        use OpCode::*;
+        match op {
+            Add(param_modes) => self.execute_add(param_modes),
+            Mul(param_modes) => self.execute_mul(param_modes),
+            Jt(param_modes) => self.execute_jump_true(param_modes),
+            Jf(param_modes) => self.execute_jump_false(param_modes),
+            Lt(param_modes) => self.execute_less_than(param_modes),
+            Eq(param_modes) => self.execute_equals(param_modes),
+
+            // TODO:
+            //            Rbo(param_modes) => self.execute_relative_base_offset(),
+            In => self.execute_input(),
+            Out(param_modes) => self.execute_output(param_modes.clone()),
+
+            Halt => Err(OpCodeExecutionError::ExecutionFinished),
+            Er(_) => Err(OpCodeExecutionError::ExecutionFailure),
+        }
+    }
+
     pub(crate) fn run(&mut self) -> Result<isize, IntcodeMachineError> {
         loop {
             let op = OpCode::from(self.tape.read(self.head_position)?);
-            let head_update = match op.execute(
-                &mut self.tape,
-                self.head_position,
-                &mut self.input,
-                &mut self.output,
-            ) {
+            let head_update = match self.execute_op(op) {
                 Err(err) => match err {
                     OpCodeExecutionError::ExecutionFinished => {
                         return Ok(self.tape.read(0)?);
