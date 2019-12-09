@@ -2,7 +2,6 @@ use std::convert::TryFrom;
 use std::io::{BufRead, Write};
 
 use crate::utils;
-use std::borrow::Borrow;
 
 const ADD_OP_CODE: isize = 1;
 const MUL_OP_CODE: isize = 2;
@@ -23,7 +22,7 @@ const RELATIVE_MODE: usize = 2;
 enum ParamMode {
     Position,
     Immediate,
-    //    Relative,
+    Relative,
 }
 
 impl TryFrom<usize> for ParamMode {
@@ -35,7 +34,7 @@ impl TryFrom<usize> for ParamMode {
         match value {
             POSITION_MODE => Ok(Position),
             IMMEDIATE_MODE => Ok(Immediate),
-            //            RELATIVE_MODE => Ok(Relative),
+            RELATIVE_MODE => Ok(Relative),
             _ => Err(()),
         }
     }
@@ -67,56 +66,10 @@ enum OpCode {
     Jf(Vec<ParamMode>),
     Lt(Vec<ParamMode>),
     Eq(Vec<ParamMode>),
-    //    Rbo(Vec<ParamMode>),
+    Rbo(Vec<ParamMode>),
     Halt,
     Er(isize),
 }
-
-//impl OpCode {
-//    fn execute<R, W>(
-//        &self,
-//        tape: &mut Tape,
-//        head_position: usize,
-//        reader: &mut R,
-//        writer: &mut W,
-//    ) -> Result<HeadPositionUpdate, OpCodeExecutionError>
-//    where
-//        R: BufRead,
-//        W: Write,
-//    {
-//        use OpCode::*;
-//        match self {
-//            Add(param_modes) => {
-//                self.execute_add(self.tape, self.head_position, param_modes.clone())
-//            }
-//            Mul(param_modes) => {
-//                self.execute_mul(self.tape, self.head_position, param_modes.clone())
-//            }
-//            Jt(param_modes) => {
-//                self.execute_jump_true(self.tape, self.head_position, param_modes.clone())
-//            }
-//            Jf(param_modes) => {
-//                self.execute_jump_false(self.tape, self.head_position, param_modes.clone())
-//            }
-//            Lt(param_modes) => {
-//                self.execute_less_than(self.tape, self.head_position, param_modes.clone())
-//            }
-//            Eq(param_modes) => {
-//                self.execute_equals(self.tape, self.head_position, param_modes.clone())
-//            }
-//
-//            // TODO:
-//            //            Rbo(param_modes) => self.execute_relative_base_offset(),
-//            In => self.execute_input(self.tape, self.head_position, reader),
-//            Out(param_modes) => {
-//                self.execute_output(self.tape, self.head_position, param_modes.clone(), writer)
-//            }
-//
-//            Halt => Err(OpCodeExecutionError::ExecutionFinished),
-//            Er(_) => Err(OpCodeExecutionError::ExecutionFailure),
-//        }
-//    }
-//}
 
 impl From<isize> for OpCode {
     fn from(code: isize) -> Self {
@@ -146,6 +99,7 @@ impl From<isize> for OpCode {
             EQUALS_OP_CODE => 3,
             INPUT_OP_CODE => 0,
             OUTPUT_OP_CODE => 1,
+            RLT_BASE_OFFSET_OP_CODE => 1,
             HALT_OP_CODE => 0,
             _ => 0,
         };
@@ -167,6 +121,7 @@ impl From<isize> for OpCode {
             EQUALS_OP_CODE => Eq(param_modes_vec),
             INPUT_OP_CODE => In,
             OUTPUT_OP_CODE => Out(param_modes_vec),
+            RLT_BASE_OFFSET_OP_CODE => Rbo(param_modes_vec),
             HALT_OP_CODE => Halt,
             _ => Er(code),
         }
@@ -208,7 +163,12 @@ impl Tape {
         Ok(self.0[position])
     }
 
-    fn mode_read(&self, tape_idx: usize, param_mode: ParamMode) -> Result<isize, TapeError> {
+    fn mode_read(
+        &self,
+        tape_idx: usize,
+        relative_base: isize,
+        param_mode: ParamMode,
+    ) -> Result<isize, TapeError> {
         let literal_value = self.read(tape_idx)?;
         match param_mode {
             ParamMode::Position => {
@@ -218,12 +178,20 @@ impl Tape {
                     Ok(self.read(literal_value as usize)?)
                 }
             }
+            ParamMode::Relative => {
+                if literal_value < 0 {
+                    Err(TapeError::ReadOutOfRangeError)
+                } else {
+                    Ok(self.read((literal_value + relative_base) as usize)?)
+                }
+            }
+
             ParamMode::Immediate => Ok(literal_value),
-            //            ParamMode::Relative => Ok(literal_value),
         }
     }
 
     fn mode_write(&mut self, tape_idx: usize, param_mode: ParamMode) -> Result<(), TapeError> {
+        // TODO: memory reallocation?
         Ok(())
     }
 }
@@ -250,6 +218,7 @@ impl From<OpCodeExecutionError> for IntcodeMachineError {
 #[derive(Debug, Clone)]
 pub struct State {
     tape: Tape,
+    relative_base: isize,
     head_position: usize,
 }
 
@@ -257,6 +226,7 @@ impl State {
     pub fn new_from_tape(tape: Tape) -> Self {
         State {
             tape,
+            relative_base: 0,
             head_position: 0,
         }
     }
@@ -266,6 +236,7 @@ impl Default for State {
     fn default() -> Self {
         State {
             tape: Tape(Vec::new()),
+            relative_base: 0,
             head_position: 0,
         }
     }
@@ -278,6 +249,7 @@ where
 {
     tape: Tape,
     head_position: usize,
+    relative_base: isize,
 
     input: R,
     output: W,
@@ -292,6 +264,7 @@ where
         IntcodeMachine {
             tape,
             head_position: 0,
+            relative_base: 0,
             input: reader,
             output: writer,
         }
@@ -301,6 +274,7 @@ where
         IntcodeMachine {
             tape: state.tape,
             head_position: state.head_position,
+            relative_base: state.relative_base,
             input: reader,
             output: writer,
         }
@@ -309,6 +283,7 @@ where
     pub fn dump_state(&self) -> State {
         State {
             tape: self.tape.clone(),
+            relative_base: self.relative_base,
             head_position: self.head_position,
         }
     }
@@ -327,12 +302,14 @@ where
         &mut self,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let result = self
-            .tape
-            .mode_read(self.head_position + 1, param_modes[0])?
-            + self
-                .tape
-                .mode_read(self.head_position + 2, param_modes[1])?;
+        let result =
+            self.tape
+                .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?
+                + self.tape.mode_read(
+                    self.head_position + 2,
+                    self.relative_base,
+                    param_modes[1],
+                )?;
 
         let output_idx = self.tape.read(self.head_position + 3)?;
         self.tape.write(output_idx as usize, result)?;
@@ -344,12 +321,14 @@ where
         &mut self,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let result = self
-            .tape
-            .mode_read(self.head_position + 1, param_modes[0])?
-            * self
-                .tape
-                .mode_read(self.head_position + 2, param_modes[1])?;
+        let result =
+            self.tape
+                .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?
+                * self.tape.mode_read(
+                    self.head_position + 2,
+                    self.relative_base,
+                    param_modes[1],
+                )?;
 
         let output_idx = self.tape.read(self.head_position + 3)?;
         self.tape.write(output_idx as usize, result)?;
@@ -361,12 +340,12 @@ where
         &mut self,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let param1 = self
-            .tape
-            .mode_read(self.head_position + 1, param_modes[0])?;
-        let param2 = self
-            .tape
-            .mode_read(self.head_position + 2, param_modes[1])?;
+        let param1 =
+            self.tape
+                .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
+        let param2 =
+            self.tape
+                .mode_read(self.head_position + 2, self.relative_base, param_modes[1])?;
         let store_target = self.tape.read(self.head_position + 3)?;
 
         if param1 < param2 {
@@ -382,12 +361,12 @@ where
         &mut self,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let param = self
-            .tape
-            .mode_read(self.head_position + 1, param_modes[0])?;
-        let jump_target = self
-            .tape
-            .mode_read(self.head_position + 2, param_modes[1])?;
+        let param =
+            self.tape
+                .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
+        let jump_target =
+            self.tape
+                .mode_read(self.head_position + 2, self.relative_base, param_modes[1])?;
 
         if param != 0 {
             Ok(jump_target as usize)
@@ -400,12 +379,12 @@ where
         &mut self,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let param = self
-            .tape
-            .mode_read(self.head_position + 1, param_modes[0])?;
-        let jump_target = self
-            .tape
-            .mode_read(self.head_position + 2, param_modes[1])?;
+        let param =
+            self.tape
+                .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
+        let jump_target =
+            self.tape
+                .mode_read(self.head_position + 2, self.relative_base, param_modes[1])?;
 
         if param == 0 {
             Ok(jump_target as usize)
@@ -418,12 +397,12 @@ where
         &mut self,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let param1 = self
-            .tape
-            .mode_read(self.head_position + 1, param_modes[0])?;
-        let param2 = self
-            .tape
-            .mode_read(self.head_position + 2, param_modes[1])?;
+        let param1 =
+            self.tape
+                .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
+        let param2 =
+            self.tape
+                .mode_read(self.head_position + 2, self.relative_base, param_modes[1])?;
         let store_target = self.tape.read(self.head_position + 3)?;
 
         if param1 == param2 {
@@ -433,6 +412,18 @@ where
         }
 
         Ok(self.head_position + 4)
+    }
+
+    fn execute_adjust_relative_base(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let param =
+            self.tape
+                .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
+
+        self.relative_base += param;
+        Ok(self.head_position + 1)
     }
 
     fn execute_input(&mut self) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
@@ -454,9 +445,9 @@ where
         &mut self,
         param_modes: Vec<ParamMode>,
     ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let output_val = self
-            .tape
-            .mode_read(self.head_position + 1, param_modes[0])?;
+        let output_val =
+            self.tape
+                .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
         write!(&mut self.output, "{}", output_val).unwrap();
         Ok(self.head_position + 2)
     }
@@ -470,7 +461,7 @@ where
             Jf(param_modes) => self.execute_jump_false(param_modes),
             Lt(param_modes) => self.execute_less_than(param_modes),
             Eq(param_modes) => self.execute_equals(param_modes),
-
+            Rbo(param_modes) => self.execute_adjust_relative_base(param_modes),
             // TODO:
             //            Rbo(param_modes) => self.execute_relative_base_offset(),
             In => self.execute_input(),
