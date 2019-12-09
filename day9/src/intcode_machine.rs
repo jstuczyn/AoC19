@@ -25,6 +25,8 @@ enum ParamMode {
     Relative,
 }
 
+// TODO: replace usize with u64 and isize with i64 due to ever changing specs
+
 impl TryFrom<usize> for ParamMode {
     type Error = ();
 
@@ -448,6 +450,7 @@ where
         let output_val =
             self.tape
                 .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
+        println!("writing {}", output_val);
         write!(&mut self.output, "{}", output_val).unwrap();
         Ok(self.head_position + 2)
     }
@@ -498,6 +501,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
 
     #[test]
     fn intcode_machine_still_works_for_day2_part1() {
@@ -543,5 +547,46 @@ mod tests {
 
         let output = String::from_utf8(output).unwrap().parse::<isize>().unwrap();
         assert_eq!(584_126, output);
+    }
+
+    //    #[test]
+    //    fn example_1_outputs_itself() {
+    //        let tape = Tape::new(vec![
+    //            109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99,
+    //        ]);
+    //
+    //        let input = io::stdin();
+    //        let mut output = io::stdout();
+    //
+    //        IntcodeMachine::new(tape, input.lock(), &mut output)
+    //            .run()
+    //            .unwrap();
+    //    }
+    //
+    //    #[test]
+    //    fn example_2_outputs_16_digit_number() {
+    //        let tape = Tape::new(vec![1102, 34915192, 34915192, 7, 4, 7, 99, 0]);
+    //
+    //        let input = io::stdin();
+    //        let mut output = io::stdout();
+    //
+    //        IntcodeMachine::new(tape, input.lock(), &mut output)
+    //            .run()
+    //            .unwrap();
+    //    }
+
+    #[test]
+    fn example_3_outputs_1125899906842624() {
+        let tape = Tape::new(vec![104, 1125899906842624, 99]);
+
+        let dummy_in = b"";
+        let mut dummy_out = Vec::new();
+
+        IntcodeMachine::new(tape, &dummy_in[..], &mut dummy_out)
+            .run()
+            .unwrap();
+
+        println!("{:?}", dummy_out); // this returned decimal representation of the utf-8 bytes. need to parse
+        assert_eq!(false, true);
     }
 }
