@@ -476,7 +476,6 @@ where
         let output_val =
             self.tape
                 .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
-        println!("writing {}", output_val);
         //        write!(&mut self.output, "{}", output_val).unwrap();
         writeln!(&mut self.output, "{}", output_val).unwrap();
 
@@ -504,9 +503,6 @@ where
     pub(crate) fn run(&mut self) -> Result<isize, IntcodeMachineError> {
         loop {
             let op = OpCode::from(self.tape.read(self.head_position));
-
-            println!("executing: {:?}", op);
-
             let head_update = match self.execute_op(op) {
                 Err(err) => match err {
                     OpCodeExecutionError::ExecutionFinished => {
@@ -516,7 +512,6 @@ where
                         return Err(IntcodeMachineError::InputFailure(self.dump_state()))
                     }
                     _ => {
-                        println!("execution failure");
                         return Err(IntcodeMachineError::ExecutionFailure);
                     }
                 },
@@ -603,11 +598,7 @@ mod tests {
         }
 
         let full_out = utils::parse_multiple_utf8_num_repr_lns(&dummy_out);
-
-        println!("out: {:?}", full_out);
-        //        panic!(dummy_out)
-
-        //        assert!(foo.is_ok());
+        assert_eq!(tape_input, full_out);
     }
 
     #[test]
