@@ -59,10 +59,11 @@ impl From<TapeError> for OpCodeExecutionError {
     }
 }
 
+#[derive(Debug)]
 enum OpCode {
     Add(Vec<ParamMode>),
     Mul(Vec<ParamMode>),
-    In,
+    In(Vec<ParamMode>),
     Out(Vec<ParamMode>),
     Jt(Vec<ParamMode>),
     Jf(Vec<ParamMode>),
@@ -99,7 +100,7 @@ impl From<isize> for OpCode {
             JMP_FALSE_OP_CODE => 2,
             LESS_THAN_OP_CODE => 3,
             EQUALS_OP_CODE => 3,
-            INPUT_OP_CODE => 0,
+            INPUT_OP_CODE => 1,
             OUTPUT_OP_CODE => 1,
             RLT_BASE_OFFSET_OP_CODE => 1,
             HALT_OP_CODE => 0,
@@ -121,7 +122,7 @@ impl From<isize> for OpCode {
             JMP_FALSE_OP_CODE => Jf(param_modes_vec),
             LESS_THAN_OP_CODE => Lt(param_modes_vec),
             EQUALS_OP_CODE => Eq(param_modes_vec),
-            INPUT_OP_CODE => In,
+            INPUT_OP_CODE => In(param_modes_vec),
             OUTPUT_OP_CODE => Out(param_modes_vec),
             RLT_BASE_OFFSET_OP_CODE => Rbo(param_modes_vec),
             HALT_OP_CODE => Halt,
@@ -134,6 +135,7 @@ impl From<isize> for OpCode {
 enum TapeError {
     WriteOutOfRangeError,
     ReadOutOfRangeError,
+    WriteInImmediateModeError,
 }
 
 #[derive(Debug, Clone)]
@@ -144,47 +146,53 @@ impl Tape {
         Tape(input)
     }
 
+    fn resize(&mut self, lower_bound: usize) {
+        self.0.resize(lower_bound, 0);
+    }
+
     fn len(&self) -> usize {
         self.0.len()
     }
 
     fn write(&mut self, position: usize, value: isize) -> Result<(), TapeError> {
         if self.0.len() < position {
-            return Err(TapeError::WriteOutOfRangeError);
+            // according to day9 specs, write should always succeed (unless to negative index)
+            self.resize(position + 1);
         }
 
         self.0[position] = value;
         Ok(())
     }
 
-    fn read(&self, position: usize) -> Result<isize, TapeError> {
-        if self.0.len() < position {
-            return Err(TapeError::ReadOutOfRangeError);
+    fn read(&mut self, position: usize) -> isize {
+        if self.len() < position {
+            // according to day9 specs, read should always succeed (unless on negative index)
+            self.resize(position + 1);
         }
 
-        Ok(self.0[position])
+        self.0[position]
     }
 
     fn mode_read(
-        &self,
-        tape_idx: usize,
+        &mut self,
+        position: usize,
         relative_base: isize,
         param_mode: ParamMode,
     ) -> Result<isize, TapeError> {
-        let literal_value = self.read(tape_idx)?;
+        let literal_value = self.read(position);
         match param_mode {
             ParamMode::Position => {
                 if literal_value < 0 {
                     Err(TapeError::ReadOutOfRangeError)
                 } else {
-                    Ok(self.read(literal_value as usize)?)
+                    Ok(self.read(literal_value as usize))
                 }
             }
             ParamMode::Relative => {
-                if literal_value < 0 {
+                if (literal_value + relative_base) < 0 {
                     Err(TapeError::ReadOutOfRangeError)
                 } else {
-                    Ok(self.read((literal_value + relative_base) as usize)?)
+                    Ok(self.read((literal_value + relative_base) as usize))
                 }
             }
 
@@ -192,9 +200,24 @@ impl Tape {
         }
     }
 
-    fn mode_write(&mut self, tape_idx: usize, param_mode: ParamMode) -> Result<(), TapeError> {
-        // TODO: memory reallocation?
-        Ok(())
+    fn mode_write(
+        &mut self,
+        position: usize,
+        relative_base: isize,
+        param_mode: ParamMode,
+        value: isize,
+    ) -> Result<(), TapeError> {
+        match param_mode {
+            ParamMode::Position => self.write(position, value),
+            ParamMode::Relative => {
+                if position as isize + relative_base < 0 {
+                    return Err(TapeError::WriteOutOfRangeError);
+                }
+                self.write((position as isize + relative_base) as usize, value)
+            }
+
+            ParamMode::Immediate => Err(TapeError::WriteInImmediateModeError),
+        }
     }
 }
 
@@ -313,8 +336,8 @@ where
                     param_modes[1],
                 )?;
 
-        let output_idx = self.tape.read(self.head_position + 3)?;
-        self.tape.write(output_idx as usize, result)?;
+        let output_idx = self.tape.read(self.head_position + 3);
+        self.tape.write(output_idx as usize, result);
 
         Ok(self.head_position + 4)
     }
@@ -332,8 +355,8 @@ where
                     param_modes[1],
                 )?;
 
-        let output_idx = self.tape.read(self.head_position + 3)?;
-        self.tape.write(output_idx as usize, result)?;
+        let output_idx = self.tape.read(self.head_position + 3);
+        self.tape.write(output_idx as usize, result);
 
         Ok(self.head_position + 4)
     }
@@ -348,12 +371,12 @@ where
         let param2 =
             self.tape
                 .mode_read(self.head_position + 2, self.relative_base, param_modes[1])?;
-        let store_target = self.tape.read(self.head_position + 3)?;
+        let store_target = self.tape.read(self.head_position + 3);
 
         if param1 < param2 {
-            self.tape.write(store_target as usize, 1)?;
+            self.tape.write(store_target as usize, 1);
         } else {
-            self.tape.write(store_target as usize, 0)?;
+            self.tape.write(store_target as usize, 0);
         }
 
         Ok(self.head_position + 4)
@@ -405,12 +428,12 @@ where
         let param2 =
             self.tape
                 .mode_read(self.head_position + 2, self.relative_base, param_modes[1])?;
-        let store_target = self.tape.read(self.head_position + 3)?;
+        let store_target = self.tape.read(self.head_position + 3);
 
         if param1 == param2 {
-            self.tape.write(store_target as usize, 1)?;
+            self.tape.write(store_target as usize, 1);
         } else {
-            self.tape.write(store_target as usize, 0)?;
+            self.tape.write(store_target as usize, 0);
         }
 
         Ok(self.head_position + 4)
@@ -425,11 +448,14 @@ where
                 .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
 
         self.relative_base += param;
-        Ok(self.head_position + 1)
+        Ok(self.head_position + 2)
     }
 
-    fn execute_input(&mut self) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
-        let output_idx = self.tape.read(self.head_position + 1)?;
+    fn execute_input(
+        &mut self,
+        param_modes: Vec<ParamMode>,
+    ) -> Result<HeadPositionUpdate, OpCodeExecutionError> {
+        let output_idx = self.tape.read(self.head_position + 1);
 
         let mut buffer = String::new();
         self.input.read_line(&mut buffer).unwrap();
@@ -438,7 +464,7 @@ where
             _ => return Err(OpCodeExecutionError::InputFailure),
         };
 
-        self.tape.write(output_idx as usize, input_value)?;
+        self.tape.write(output_idx as usize, input_value);
 
         Ok(self.head_position + 2)
     }
@@ -451,7 +477,9 @@ where
             self.tape
                 .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
         println!("writing {}", output_val);
-        write!(&mut self.output, "{}", output_val).unwrap();
+        //        write!(&mut self.output, "{}", output_val).unwrap();
+        writeln!(&mut self.output, "{}", output_val).unwrap();
+
         Ok(self.head_position + 2)
     }
 
@@ -465,9 +493,7 @@ where
             Lt(param_modes) => self.execute_less_than(param_modes),
             Eq(param_modes) => self.execute_equals(param_modes),
             Rbo(param_modes) => self.execute_adjust_relative_base(param_modes),
-            // TODO:
-            //            Rbo(param_modes) => self.execute_relative_base_offset(),
-            In => self.execute_input(),
+            In(param_modes) => self.execute_input(param_modes),
             Out(param_modes) => self.execute_output(param_modes.clone()),
 
             Halt => Err(OpCodeExecutionError::ExecutionFinished),
@@ -477,16 +503,20 @@ where
 
     pub(crate) fn run(&mut self) -> Result<isize, IntcodeMachineError> {
         loop {
-            let op = OpCode::from(self.tape.read(self.head_position)?);
+            let op = OpCode::from(self.tape.read(self.head_position));
+
+            println!("executing: {:?}", op);
+
             let head_update = match self.execute_op(op) {
                 Err(err) => match err {
                     OpCodeExecutionError::ExecutionFinished => {
-                        return Ok(self.tape.read(0)?);
+                        return Ok(self.tape.read(0));
                     }
                     OpCodeExecutionError::InputFailure => {
                         return Err(IntcodeMachineError::InputFailure(self.dump_state()))
                     }
                     _ => {
+                        println!("execution failure");
                         return Err(IntcodeMachineError::ExecutionFailure);
                     }
                 },
@@ -501,6 +531,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intcode_machine::IntcodeMachineError::InputFailure;
     use std::io;
 
     #[test]
@@ -530,7 +561,10 @@ mod tests {
             .run()
             .unwrap();
 
-        let output = String::from_utf8(output).unwrap().parse::<isize>().unwrap();
+        let output = utils::parse_multiple_utf8_num_repr_lns(&output)
+            .last()
+            .unwrap()
+            .to_owned();
         assert_eq!(13_210_611, output);
     }
 
@@ -545,39 +579,40 @@ mod tests {
             .run()
             .unwrap();
 
-        let output = String::from_utf8(output).unwrap().parse::<isize>().unwrap();
+        let output = utils::parse_multiple_utf8_num_repr_lns(&output)
+            .last()
+            .unwrap()
+            .to_owned();
         assert_eq!(584_126, output);
     }
 
-    //    #[test]
-    //    fn example_1_outputs_itself() {
-    //        let tape = Tape::new(vec![
-    //            109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99,
-    //        ]);
-    //
-    //        let input = io::stdin();
-    //        let mut output = io::stdout();
-    //
-    //        IntcodeMachine::new(tape, input.lock(), &mut output)
-    //            .run()
-    //            .unwrap();
-    //    }
-    //
-    //    #[test]
-    //    fn example_2_outputs_16_digit_number() {
-    //        let tape = Tape::new(vec![1102, 34915192, 34915192, 7, 4, 7, 99, 0]);
-    //
-    //        let input = io::stdin();
-    //        let mut output = io::stdout();
-    //
-    //        IntcodeMachine::new(tape, input.lock(), &mut output)
-    //            .run()
-    //            .unwrap();
-    //    }
+    #[test]
+    fn example_1_outputs_itself() {
+        let tape_input = vec![
+            109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99,
+        ];
+        let tape = Tape::new(tape_input.clone());
+
+        let dummy_in = b"";
+        let mut dummy_out = Vec::new();
+
+        let foo = IntcodeMachine::new(tape, &dummy_in[..], &mut dummy_out).run();
+        match foo {
+            Err(e) => panic!(e),
+            _ => (),
+        }
+
+        let full_out = utils::parse_multiple_utf8_num_repr_lns(&dummy_out);
+
+        println!("out: {:?}", full_out);
+        //        panic!(dummy_out)
+
+        //        assert!(foo.is_ok());
+    }
 
     #[test]
-    fn example_3_outputs_1125899906842624() {
-        let tape = Tape::new(vec![104, 1125899906842624, 99]);
+    fn example_2_outputs_16_digit_number() {
+        let tape = Tape::new(vec![1102, 34_915_192, 34_915_192, 7, 4, 7, 99, 0]);
 
         let dummy_in = b"";
         let mut dummy_out = Vec::new();
@@ -586,7 +621,32 @@ mod tests {
             .run()
             .unwrap();
 
-        println!("{:?}", dummy_out); // this returned decimal representation of the utf-8 bytes. need to parse
-        assert_eq!(false, true);
+        assert_eq!(
+            1_219_070_632_396_864,
+            utils::parse_multiple_utf8_num_repr_lns(&dummy_out)
+                .last()
+                .unwrap()
+                .to_owned()
+        )
+    }
+
+    #[test]
+    fn example_3_outputs_1125899906842624() {
+        let tape = Tape::new(vec![104, 1_125_899_906_842_624, 99]);
+
+        let dummy_in = b"";
+        let mut dummy_out = Vec::new();
+
+        IntcodeMachine::new(tape, &dummy_in[..], &mut dummy_out)
+            .run()
+            .unwrap();
+
+        assert_eq!(
+            1_125_899_906_842_624,
+            utils::parse_multiple_utf8_num_repr_lns(&dummy_out)
+                .last()
+                .unwrap()
+                .to_owned()
+        );
     }
 }
