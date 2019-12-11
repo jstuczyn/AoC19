@@ -154,18 +154,17 @@ impl Tape {
         self.0.len()
     }
 
-    fn write(&mut self, position: usize, value: isize) -> Result<(), TapeError> {
-        if self.0.len() <= position {
+    fn write(&mut self, position: usize, value: isize) {
+        if position >= self.0.len() {
             // according to day9 specs, write should always succeed (unless to negative index)
             self.resize(position + 1);
         }
 
         self.0[position] = value;
-        Ok(())
     }
 
     fn read(&mut self, position: usize) -> isize {
-        if self.len() < position {
+        if position >= self.len() {
             // according to day9 specs, read should always succeed (unless on negative index)
             self.resize(position + 1);
         }
@@ -208,12 +207,16 @@ impl Tape {
         value: isize,
     ) -> Result<(), TapeError> {
         match param_mode {
-            ParamMode::Position => self.write(position, value),
+            ParamMode::Position => {
+                self.write(position, value);
+                Ok(())
+            }
             ParamMode::Relative => {
                 if position as isize + relative_base < 0 {
                     return Err(TapeError::WriteOutOfRangeError);
                 }
-                self.write((position as isize + relative_base) as usize, value)
+                self.write((position as isize + relative_base) as usize, value);
+                Ok(())
             }
 
             ParamMode::Immediate => Err(TapeError::WriteInImmediateModeError),
@@ -337,7 +340,12 @@ where
                 )?;
 
         let output_idx = self.tape.read(self.head_position + 3);
-        self.tape.write(output_idx as usize, result);
+        self.tape.mode_write(
+            output_idx as usize,
+            self.relative_base,
+            param_modes[2],
+            result,
+        )?;
 
         Ok(self.head_position + 4)
     }
@@ -356,7 +364,12 @@ where
                 )?;
 
         let output_idx = self.tape.read(self.head_position + 3);
-        self.tape.write(output_idx as usize, result);
+        self.tape.mode_write(
+            output_idx as usize,
+            self.relative_base,
+            param_modes[2],
+            result,
+        )?;
 
         Ok(self.head_position + 4)
     }
@@ -374,9 +387,11 @@ where
         let store_target = self.tape.read(self.head_position + 3);
 
         if param1 < param2 {
-            self.tape.write(store_target as usize, 1);
+            self.tape
+                .mode_write(store_target as usize, self.relative_base, param_modes[2], 1)?;
         } else {
-            self.tape.write(store_target as usize, 0);
+            self.tape
+                .mode_write(store_target as usize, self.relative_base, param_modes[2], 0)?;
         }
 
         Ok(self.head_position + 4)
@@ -431,9 +446,11 @@ where
         let store_target = self.tape.read(self.head_position + 3);
 
         if param1 == param2 {
-            self.tape.write(store_target as usize, 1);
+            self.tape
+                .mode_write(store_target as usize, self.relative_base, param_modes[2], 1)?;
         } else {
-            self.tape.write(store_target as usize, 0);
+            self.tape
+                .mode_write(store_target as usize, self.relative_base, param_modes[2], 0)?;
         }
 
         Ok(self.head_position + 4)
@@ -464,7 +481,12 @@ where
             _ => return Err(OpCodeExecutionError::InputFailure),
         };
 
-        self.tape.write(output_idx as usize, input_value);
+        self.tape.mode_write(
+            output_idx as usize,
+            self.relative_base,
+            param_modes[0],
+            input_value,
+        )?;
 
         Ok(self.head_position + 2)
     }
@@ -476,7 +498,6 @@ where
         let output_val =
             self.tape
                 .mode_read(self.head_position + 1, self.relative_base, param_modes[0])?;
-        //        write!(&mut self.output, "{}", output_val).unwrap();
         writeln!(&mut self.output, "{}", output_val).unwrap();
 
         Ok(self.head_position + 2)
@@ -509,7 +530,7 @@ where
                         return Ok(self.tape.read(0));
                     }
                     OpCodeExecutionError::InputFailure => {
-                        return Err(IntcodeMachineError::InputFailure(self.dump_state()))
+                        return Err(IntcodeMachineError::InputFailure(self.dump_state()));
                     }
                     _ => {
                         return Err(IntcodeMachineError::ExecutionFailure);
@@ -525,15 +546,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::intcode_machine::IntcodeMachineError::InputFailure;
     use std::io;
+
+    use crate::intcode_machine::IntcodeMachineError::InputFailure;
+
+    use super::*;
 
     #[test]
     fn intcode_machine_still_works_for_day2_part1() {
         let mut day2_tape = Tape::new(utils::read_input_file("day2.input"));
-        day2_tape.write(1, 12).unwrap();
-        day2_tape.write(2, 2).unwrap();
+        day2_tape.write(1, 12);
+        day2_tape.write(2, 2);
 
         let dummy_in = b"";
         let mut dummy_out = Vec::new();
@@ -591,11 +614,9 @@ mod tests {
         let dummy_in = b"";
         let mut dummy_out = Vec::new();
 
-        let foo = IntcodeMachine::new(tape, &dummy_in[..], &mut dummy_out).run();
-        match foo {
-            Err(e) => panic!(e),
-            _ => (),
-        }
+        IntcodeMachine::new(tape, &dummy_in[..], &mut dummy_out)
+            .run()
+            .unwrap();
 
         let full_out = utils::parse_multiple_utf8_num_repr_lns(&dummy_out);
         assert_eq!(tape_input, full_out);
