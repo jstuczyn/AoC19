@@ -155,7 +155,7 @@ impl Tape {
     }
 
     fn write(&mut self, position: usize, value: isize) -> Result<(), TapeError> {
-        if self.0.len() < position {
+        if self.0.len() <= position {
             // according to day9 specs, write should always succeed (unless to negative index)
             self.resize(position + 1);
         }
